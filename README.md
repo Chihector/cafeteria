@@ -139,6 +139,16 @@ Hasta ahora hemos completado satisfactoriamente la reconversión a formato **Caf
 - El cobro solo puede completarse una vez; pagar libera la mesa y el endpoint del KDS no puede marcar un pedido como pagado ni reabrir uno pagado.
 - Pruebas de integración en `tests/Feature/PedidoFlowTest.php` cubren estos casos.
 
+### 11. Exportación del Reporte Z a CSV (Fase 10)
+- **URL:** `/admin/cierre-turno/csv` *(Protegida por Login)*
+- **Estado:** ✅ Completado
+- **Características:**
+  - Descarga el Reporte Z completo en CSV con los mismos filtros de período que la vista (`?periodo=dia|mes|anio&valor=YYYY-MM-DD`).
+  - Archivo con **BOM UTF-8** (tildes y "ñ" correctas en Excel), separador `;`, decimales con coma y miles con punto (formato español listo para contabilidad).
+  - Secciones: cabecera del reporte, **resumen** (ventas netas, propinas, total a cuadrar, pedidos pagados), **desglose por método de pago** y **detalle de pedidos pagados** con fecha, hora, mesa, barista y totales.
+  - Botón "⬇️ Descargar CSV" junto al de PDF en `/admin/cierre-turno`; el enlace se sincroniza automáticamente con el período y valor seleccionados en el filtro.
+  - Pruebas de integración en `tests/Feature/ReporteZCsvTest.php` cubren autenticación, contenido del archivo y exclusión de pedidos no pagados o de otros días.
+
 ---
 
 ## 📂 Estructura de Rutas Principales
@@ -150,6 +160,7 @@ Hasta ahora hemos completado satisfactoriamente la reconversión a formato **Caf
 | `/carta` | GET | Carta Digital QR | Público |
 | `/admin` | GET | Panel de administración | Auth |
 | `/admin/cierre-turno` | GET | Reporte Z (Fase 7) | Auth |
+| `/admin/cierre-turno/csv` | GET | Export CSV del Reporte Z (Fase 10) | Auth |
 | `/admin/productos` | Resource | CRUD de productos | Auth |
 | `/pos` | GET | Punto de Venta | Auth |
 | `/kds` | GET | Cocina - Comandas en vivo | Auth |
@@ -166,12 +177,9 @@ Hasta ahora hemos completado satisfactoriamente la reconversión a formato **Caf
 
 ## 🗺️ Estado actual y próximos pasos
 
-Las fases funcionales 1 a 9 están implementadas y el flujo central de pedidos/cobros cuenta ahora con controles de integridad y pruebas. La suite actual pasa con **9 pruebas y 36 aserciones**. El proyecto sigue en desarrollo: esto no equivale a una auditoría de seguridad ni a una certificación para producción.
+Las fases funcionales 1 a 10 están implementadas y el flujo central de pedidos/cobros cuenta ahora con controles de integridad y pruebas. La suite actual pasa con **11 pruebas y 56 aserciones**. El proyecto sigue en desarrollo: esto no equivale a una auditoría de seguridad ni a una certificación para producción.
 
 Orden sugerido para continuar:
-
-### Fase 10: Exportación del Reporte Z a CSV
-- Permitir descargar el desglose de ventas en formato CSV para importar en contabilidad externa.
 
 ### Fase 11: Roles de Usuario y Permisos
 - Diferenciar roles (Administrador, Barista, Cocina) con permisos granulares sobre cada módulo.
@@ -191,10 +199,11 @@ Orden sugerido para continuar:
 - La carpeta `storage/app/public` ya ha sido enlazada usando `storage:link`.
 - AlpineJS está integrado de manera inline en los archivos Blade (POS y KDS) para reactividad sin compilación compleja.
 - El PDF del Reporte Z usa `html2pdf.js` vía CDN, por lo que no requiere `composer require` de librerías PDF adicionales.
+- El CSV del Reporte Z (Fase 10) usa `fputcsv` nativo de PHP con BOM UTF-8, separador `;` y decimales con coma; pensado para importar directo en Excel/contabilidad.
 - La comanda de cocina (Fase 9) se imprime automáticamente al crear un pedido desde el POS; se abre en una ventana `_blank` con `width=350,height=600` optimizada para térmica de 72mm.
 - Todas las rutas operativas (`/pos`, `/kds`, `/admin`, `/admin/cierre-turno`) están protegidas por el middleware `auth`.
 - Ejecutar `php artisan test` para correr toda la suite de pruebas; ejecutar `vendor/bin/pint --test` para verificar formato PHP.
 
 ---
 
-Última actualización: **16 de octubre de 2026**. Fases funcionales 1–9 implementadas; refuerzo de integridad de pedidos/cobros y pruebas de integración añadidos.
+Última actualización: **16 de octubre de 2026**. Fases funcionales 1–10 implementadas; export CSV del Reporte Z con pruebas de integración añadido.

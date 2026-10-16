@@ -46,6 +46,9 @@
                 <button id="btnPdf" class="bg-green-500 text-white font-bold py-2.5 px-6 rounded-xl hover:bg-green-600 transition-all shadow-lg shadow-green-500/30 text-sm" @click="descargarPDF(event)">
                     📄 Descargar PDF
                 </button>
+                <a id="btnCsv" data-base="{{ route('admin.cierre-turno.csv') }}" href="{{ route('admin.cierre-turno.csv', ['periodo' => $periodo, 'valor' => $valor]) }}" class="bg-blue-500 text-white font-bold py-2.5 px-6 rounded-xl hover:bg-blue-600 transition-all shadow-lg shadow-blue-500/30 text-sm inline-block">
+                    ⬇️ Descargar CSV
+                </a>
             </div>
         </form>
 
@@ -239,6 +242,7 @@
         // Ajustar tipo de input según período seleccionado
         const selectPeriodo = document.getElementById('periodo');
         const inputValor = document.getElementById('valor');
+        const btnCsv = document.getElementById('btnCsv');
 
         function actualizarInput() {
             if (selectPeriodo.value === 'dia') {
@@ -255,7 +259,15 @@
             }
         }
 
+        // Mantener el enlace de descarga CSV alineado con el filtro actual
+        function actualizarEnlaceCsv() {
+            const params = new URLSearchParams({ periodo: selectPeriodo.value, valor: inputValor.value });
+            btnCsv.href = btnCsv.dataset.base + '?' + params.toString();
+        }
+
         selectPeriodo.addEventListener('change', actualizarInput);
+        selectPeriodo.addEventListener('change', actualizarEnlaceCsv);
+        inputValor.addEventListener('change', actualizarEnlaceCsv);
         actualizarInput();
     </script>
 @endsection
