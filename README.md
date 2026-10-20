@@ -27,9 +27,10 @@ Sigue estos pasos para levantar el proyecto localmente y poder retomar el desarr
      ```bash
      php artisan migrate:fresh --seed
      ```
-   - **Credenciales locales de prueba** (creadas por el seeder):
-     - **Email:** `barista@test.com`
-     - **Contraseña:** `password`
+   - **Credenciales locales de prueba** (creadas por el seeder, una por rol):
+     - **Administrador:** `admin@test.com` / `password`
+     - **Barista:** `barista@test.com` / `password`
+     - **Cocina:** `cocina@test.com` / `password`
    - Estas credenciales son solo para desarrollo. Cámbialas y configura el entorno antes de cualquier despliegue.
 
 4. **Levantar servidores:**
@@ -149,43 +150,89 @@ Hasta ahora hemos completado satisfactoriamente la reconversión a formato **Caf
   - Botón "⬇️ Descargar CSV" junto al de PDF en `/admin/cierre-turno`; el enlace se sincroniza automáticamente con el período y valor seleccionados en el filtro.
   - Pruebas de integración en `tests/Feature/ReporteZCsvTest.php` cubren autenticación, contenido del archivo y exclusión de pedidos no pagados o de otros días.
 
+### 12. Roles de Usuario y Permisos (Fase 11)
+- **Estado:** ✅ Completado
+- **Roles:** `admin` (Administrador), `barista` (Barista) y `cocina` (Cocina), almacenados en `users.role`.
+- **Middleware:** `role:admin`, `role:admin,barista`, `role:admin,cocina` (alias registrado en `bootstrap/app.php`). Un usuario autenticado sin permiso recibe **403**.
+- **Redirección por rol al iniciar sesión:** Administrador → `/admin`, Barista → `/pos`, Cocina → `/kds` (también aplica en `/`).
+- **Matriz de acceso:**
+  | Módulo / Recurso | Administrador | Barista | Cocina |
+  |---|:---:|:---:|:---:|
+  | Dashboard, productos, Reporte Z y CSV | ✅ | ❌ | ❌ |
+  | POS, mesas, productos, crear pedido, cobrar, ticket | ✅ | ✅ | ❌ |
+  | KDS, listado de comandas y cambio de estado | ✅ | ❌ | ✅ |
+  | Comanda de cocina (reimpresión) | ✅ | ✅ | ✅ |
+- La interfaz muestra el nombre y rol del usuario conectado, con botón de salir en POS y KDS.
+- Pruebas de integración en `tests/Feature/RoleAccessTest.php` cubren invitados, redirección por rol y la matriz de permisos.
+
+### 13. Notificaciones en Tiempo Real (Fase 12)
+- **Estado:** ✅ Completado
+- **Motor:** **Laravel Reverb** (WebSockets, protocolo Pusher) con eventos `ShouldBroadcastNow` (no requiere worker de colas).
+- **Eventos:**
+  - `PedidoCreado` → la comanda aparece al instante en el KDS y el POS refresca el grid de mesas.
+  - `PedidoActualizado` → sincroniza cambios de estado y el cobro/liberación de mesa entre POS y cocina.
+- **Canales privados** con autorización por rol (reutiliza la Fase 11):
+  - `pos` → Administrador y Barista.
+  - `cocina` → Administrador y Cocina.
+- **Frontend:** `laravel-echo` + `pusher-js` (CDN) en `resources/views/layouts/realtime.blade.php`. POS y KDS muestran un indicador **● Tiempo real / ● En vivo** y un **○ Auto-refresco** cuando el WebSocket no está disponible.
+- **Respaldo automático:** si el WebSocket se cae, ambas vistas refrescan cada **12 s** (solo si la pestaña está visible). Así la operación nunca se queda con datos viejos.
+- **Avisos:** sonido corto en cocina al entrar una comanda y en el POS al liberarse una mesa.
+- **Pruebas:** `tests/Feature/RealtimeEventsTest.php` (6 tests) verifica emisión de eventos, payloads, canales y autorización. Además se validó **end-to-end** con Reverb real: conexión WebSocket, suscripción a canales privados, creación de pedido y recepción de eventos en POS y cocina.
+
+#### Cómo ejecutar el tiempo real en local
+```bash
+# Terminal 1: servidor web
+php artisan serve --host=0.0.0.0 --port=8000
+
+# Terminal 2: servidor WebSocket
+php artisan reverb:start --host=0.0.0.0 --port=8080
+```
+Variables relevantes en `.env` (ya generadas por `install:broadcasting`):
+`BROADCAST_CONNECTION=reverb`, `REVERB_APP_ID`, `REVERB_APP_KEY`, `REVERB_APP_SECRET`, `REVERB_HOST`, `REVERB_PORT`, `REVERB_SCHEME`.
+El cliente usa el mismo host desde el que se abrió la página cuando `REVERB_HOST` es `localhost`/`127.0.0.1`, lo que permite probar desde el celular con la IP de la LAN (Reverb debe escuchar en `0.0.0.0`). En producción, define `REVERB_HOST` con el dominio real y usa `REVERB_SCHEME=https`.
+
+---
+
+## 🧹 Correcciones de calidad (19 oct 2026)
+
+- El dashboard ahora cuenta como **ventas solo pedidos `pagado`**, igual que el Reporte Z (antes sumaba `listo`/`entregado` sin cobrar).
+- **No se puede eliminar un producto con pedidos históricos**: se bloquea con un mensaje y se sugiere desactivarlo, evitando que el `ON DELETE CASCADE` borre líneas de pedidos pasados y descuadre reportes.
+- Se eliminó la ruta `productos.show` (no existía el método en el controlador), evitando errores 500.
+- El seeder pasó a ser **idempotente** (`updateOrCreate`/`firstOrCreate`), por lo que puede ejecutarse varias veces sin duplicar datos ni fallar por emails repetidos.
+- **KDS:** se corrigió el JavaScript del tablero (faltaban comas entre métodos/getters, lo que impedía que Alpine inicializara la pantalla) y el nombre de las listas (`pedidosPendiente` → `pedidosPendientes`, `pedidosListo` → `pedidosListos`), que hacía que las columnas de **Pendientes** y **Listos** siempre aparecieran vacías.
+
 ---
 
 ## 📂 Estructura de Rutas Principales
 
 | Ruta | Método | Descripción | Acceso |
 |------|--------|-------------|--------|
-| `/` | GET | Redirige a `/admin` | Público |
+| `/` | GET | Redirige al módulo del rol (o `/login`) | Público |
 | `/login` | GET/POST | Autenticación | Público |
 | `/carta` | GET | Carta Digital QR | Público |
-| `/admin` | GET | Panel de administración | Auth |
-| `/admin/cierre-turno` | GET | Reporte Z (Fase 7) | Auth |
-| `/admin/cierre-turno/csv` | GET | Export CSV del Reporte Z (Fase 10) | Auth |
-| `/admin/productos` | Resource | CRUD de productos | Auth |
-| `/pos` | GET | Punto de Venta | Auth |
-| `/kds` | GET | Cocina - Comandas en vivo | Auth |
-| `/api/pedidos` | POST | Crear pedido | Auth |
-| `/api/kds/pedidos` | GET | Listado paginado para cocina | Auth |
-| `/api/kds/pedidos/{id}/estado` | PATCH | Cambiar estado de comanda | Auth |
-| `/api/pedidos/{id}/pagar` | POST | Cobrar pedido y liberar mesa | Auth |
-| `/api/pedidos/{id}/ticket` | GET | Ticket de cobro / factura | Auth |
-| `/api/pedidos/{id}/comanda` | GET | Comanda de cocina para impresión (Fase 9) | Auth |
-| `/api/mesas` | GET | Listado de mesas con estado | Auth |
-| `/api/productos` | GET | Listado de productos disponibles | Auth |
+| `/admin` | GET | Panel de administración | Admin |
+| `/admin/cierre-turno` | GET | Reporte Z (Fase 7) | Admin |
+| `/admin/cierre-turno/csv` | GET | Export CSV del Reporte Z (Fase 10) | Admin |
+| `/admin/productos` | Resource | CRUD de productos | Admin |
+| `/pos` | GET | Punto de Venta | Admin / Barista |
+| `/kds` | GET | Cocina - Comandas en vivo | Admin / Cocina |
+| `/api/pedidos` | POST | Crear pedido | Admin / Barista |
+| `/api/kds/pedidos` | GET | Listado paginado para cocina | Admin / Cocina |
+| `/api/kds/pedidos/{id}/estado` | PATCH | Cambiar estado de comanda | Admin / Cocina |
+| `/api/pedidos/{id}/pagar` | POST | Cobrar pedido y liberar mesa | Admin / Barista |
+| `/api/pedidos/{id}/ticket` | GET | Ticket de cobro / factura | Admin / Barista |
+| `/api/pedidos/{id}/comanda` | GET | Comanda de cocina para impresión (Fase 9) | Todos los roles |
+| `/api/mesas` | GET | Listado de mesas con estado | Admin / Barista |
+| `/api/productos` | GET | Listado de productos disponibles | Admin / Barista |
+| `/broadcasting/auth` | POST | Autorización de canales privados (Fase 12) | Según canal |
 
 ---
 
 ## 🗺️ Estado actual y próximos pasos
 
-Las fases funcionales 1 a 10 están implementadas y el flujo central de pedidos/cobros cuenta ahora con controles de integridad y pruebas. La suite actual pasa con **11 pruebas y 56 aserciones**. El proyecto sigue en desarrollo: esto no equivale a una auditoría de seguridad ni a una certificación para producción.
+Las fases funcionales 1 a 12 están implementadas: flujo de pedidos/cobros con controles de integridad, permisos por rol y sincronización en tiempo real entre POS y cocina. La suite actual pasa con **27 pruebas y 157 aserciones** (más una verificación E2E con Reverb real). El proyecto sigue en desarrollo: esto no equivale a una auditoría de seguridad ni a una certificación para producción.
 
 Orden sugerido para continuar:
-
-### Fase 11: Roles de Usuario y Permisos
-- Diferenciar roles (Administrador, Barista, Cocina) con permisos granulares sobre cada módulo.
-
-### Fase 12: Notificaciones en Tiempo Real (WebSockets / Pusher)
-- Notificar al POS y KDS al instante cuando se crea o actualiza un pedido, sin necesidad de refrescar.
 
 ### Fase 13: Impresión física automática (red local)
 - Conectar directamente a impresoras térmicas de red (Epson/Xprinter) en lugar de depender de `window.print()` del navegador.
@@ -194,16 +241,18 @@ Orden sugerido para continuar:
 
 ## 💡 Notas para Futuros Desarrolladores (IA / Humanos)
 
-- Para correr el proyecto usar `npm run dev --host` y `php artisan serve --host=0.0.0.0 --port=8000`.
-- Las migraciones actuales incluyen soporte para imágenes (`imagen`), métodos de pago (`metodo_pago`) y propinas (`propina`).
+- Para correr el proyecto usar `npm run dev --host`, `php artisan serve --host=0.0.0.0 --port=8000` y, para tiempo real, `php artisan reverb:start --host=0.0.0.0 --port=8080`.
+- Las migraciones actuales incluyen soporte para imágenes (`imagen`), métodos de pago (`metodo_pago`), propinas (`propina`) y roles (`role`).
 - La carpeta `storage/app/public` ya ha sido enlazada usando `storage:link`.
 - AlpineJS está integrado de manera inline en los archivos Blade (POS y KDS) para reactividad sin compilación compleja.
 - El PDF del Reporte Z usa `html2pdf.js` vía CDN, por lo que no requiere `composer require` de librerías PDF adicionales.
 - El CSV del Reporte Z (Fase 10) usa `fputcsv` nativo de PHP con BOM UTF-8, separador `;` y decimales con coma; pensado para importar directo en Excel/contabilidad.
 - La comanda de cocina (Fase 9) se imprime automáticamente al crear un pedido desde el POS; se abre en una ventana `_blank` con `width=350,height=600` optimizada para térmica de 72mm.
-- Todas las rutas operativas (`/pos`, `/kds`, `/admin`, `/admin/cierre-turno`) están protegidas por el middleware `auth`.
+- Todas las rutas operativas están protegidas por `auth` y, además, por el middleware de rol (`role:admin`, `role:admin,barista`, `role:admin,cocina`). El rol vive en `users.role` (`admin` | `barista` | `cocina`).
+- El alias `role` se registra en `bootstrap/app.php`; el middleware está en `app/Http/Middleware/EnsureUserHasRole.php`.
+- Tiempo real (Fase 12): eventos en `app/Events/`, canales en `routes/channels.php` y cliente en `resources/views/layouts/realtime.blade.php`. Se usa `ShouldBroadcastNow`, así que **no hace falta un worker de colas**; sí hace falta Reverb corriendo. `laravel-echo` y `pusher-js` se cargan por CDN.
 - Ejecutar `php artisan test` para correr toda la suite de pruebas; ejecutar `vendor/bin/pint --test` para verificar formato PHP.
 
 ---
 
-Última actualización: **16 de octubre de 2026**. Fases funcionales 1–10 implementadas; export CSV del Reporte Z con pruebas de integración añadido.
+Última actualización: **19 de octubre de 2026**. Fase 12 (tiempo real con Reverb) completada; correcciones del KDS (JS y columnas Pendientes/Listos). Suite: 27 pruebas / 157 aserciones.

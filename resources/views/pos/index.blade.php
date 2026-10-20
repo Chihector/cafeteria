@@ -45,11 +45,21 @@
             <div class="flex items-center justify-between mb-4">
                 <div>
                     <p class="text-xs text-gray-400 font-medium uppercase tracking-wider">Turno activo</p>
-                    <p class="text-sm font-semibold text-gray-700">Barista Principal</p>
+                    <p class="text-sm font-semibold text-gray-700">{{ Auth::user()->name }}</p>
+                    <p class="text-[10px] text-gray-400">{{ Auth::user()->roleLabel() }}</p>
                 </div>
-                <div class="flex items-center gap-2">
-                    <span class="w-2 h-2 rounded-full bg-green-400 inline-block pulse-badge"></span>
-                    <span class="text-xs font-medium text-green-600">En línea</span>
+                <div class="flex items-center gap-3">
+                    <span class="text-[10px] font-bold px-2 py-1 rounded-full border"
+                          :class="realtimeConectado ? 'text-green-600 border-green-200 bg-green-50' : 'text-amber-600 border-amber-200 bg-amber-50'"
+                          x-text="realtimeConectado ? '● Tiempo real' : '○ Auto-refresco'"></span>
+                    <div class="flex items-center gap-2">
+                        <span class="w-2 h-2 rounded-full bg-green-400 inline-block pulse-badge"></span>
+                        <span class="text-xs font-medium text-green-600">En línea</span>
+                    </div>
+                    <form action="{{ route('logout') }}" method="POST">
+                        @csrf
+                        <button type="submit" class="text-xs font-semibold text-gray-400 hover:text-terracotta transition-colors">Salir</button>
+                    </form>
                 </div>
             </div>
             
@@ -324,6 +334,7 @@
             carrito: [],
             loading: false,
             cartOpenMobile: false,
+            realtimeConectado: false,
             
             // Modal state
             modalAbierto: false,
@@ -343,6 +354,38 @@
             ],
 
             init() {
+                this.fetchData();
+                this.iniciarTiempoReal();
+
+                // Respaldo: si el WebSocket no está conectado, refresca cada 12 s.
+                setInterval(() => this.refrescarRespaldo(), 12000);
+
+                window.addEventListener('cafeteria:realtime', (evento) => {
+                    this.realtimeConectado = evento.detail.conectado;
+                });
+            },
+
+            iniciarTiempoReal() {
+                if (!window.CafeRoseRealtime) return;
+
+                window.CafeRoseRealtime.listo(() => {
+                    window.CafeRoseRealtime.suscribir('pos', 'pedido.creado', () => {
+                        this.fetchData();
+                    });
+
+                    window.CafeRoseRealtime.suscribir('pos', 'pedido.actualizado', (payload) => {
+                        this.fetchData();
+
+                        // Mesa liberada desde otro POS: aviso sonoro.
+                        if (payload && payload.mesa_estado === 'disponible') {
+                            window.CafeRoseRealtime.beep();
+                        }
+                    });
+                });
+            },
+
+            refrescarRespaldo() {
+                if (document.hidden || this.realtimeConectado) return;
                 this.fetchData();
             },
 
@@ -513,5 +556,6 @@
         }
     }
 </script>
+@include('layouts.realtime')
 </body>
 </html>

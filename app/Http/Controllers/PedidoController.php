@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Events\PedidoActualizado;
+use App\Events\PedidoCreado;
 use App\Models\Mesa;
 use App\Models\Pedido;
 use App\Models\Producto;
@@ -74,6 +76,9 @@ class PedidoController extends Controller
             return $pedido;
         });
 
+        // Aviso en tiempo real a cocina y al resto de los POS.
+        PedidoCreado::dispatch($pedido);
+
         return response()->json([
             'message' => 'Pedido creado exitosamente',
             'pedido' => $pedido->load('detalles'),
@@ -119,6 +124,9 @@ class PedidoController extends Controller
             return $pedido;
         });
 
+        // Mantiene sincronizados el KDS y el POS de otros dispositivos.
+        PedidoActualizado::dispatch($pedido->id, $pedido->mesa_id, $pedido->estado, 'ocupada');
+
         return response()->json(['message' => 'Estado actualizado', 'estado' => $pedido->estado]);
     }
 
@@ -129,7 +137,7 @@ class PedidoController extends Controller
             'propina' => 'nullable|numeric|min:0',
         ]);
 
-        $pedido = DB::transaction(function () use ($validated, $pedido) {
+        [$pedido, $mesaEstado] = DB::transaction(function () use ($validated, $pedido) {
             $pedido = Pedido::query()->lockForUpdate()->findOrFail($pedido->id);
             if (! in_array($pedido->estado, self::ESTADOS_ACTIVOS, true)) {
                 throw ValidationException::withMessages([
@@ -149,8 +157,11 @@ class PedidoController extends Controller
                 ->exists();
             $mesa->update(['estado' => $tieneOtrosPedidosActivos ? 'ocupada' : 'disponible']);
 
-            return $pedido;
+            return [$pedido, $mesa->estado];
         });
+
+        // Aviso en tiempo real: el KDS quita la comanda y los POS liberan la mesa.
+        PedidoActualizado::dispatch($pedido->id, $pedido->mesa_id, $pedido->estado, $mesaEstado);
 
         return response()->json(['message' => 'Mesa cobrada exitosamente', 'pedido' => $pedido]);
     }

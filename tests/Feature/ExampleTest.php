@@ -8,12 +8,12 @@ use Tests\TestCase;
 class ExampleTest extends TestCase
 {
     /**
-     * A basic test example.
+     * Un invitado que entra a la raíz debe iniciar sesión.
      */
-    public function test_the_homepage_redirects_to_the_admin_dashboard(): void
+    public function test_the_homepage_redirects_guests_to_login(): void
     {
         $response = $this->get('/');
 
-        $response->assertRedirect('/admin');
+        $response->assertRedirect('/login');
     }
 }

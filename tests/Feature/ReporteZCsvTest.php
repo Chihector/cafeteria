@@ -19,7 +19,7 @@ class ReporteZCsvTest extends TestCase
 
     public function test_csv_export_contains_summary_breakdown_and_paid_orders_of_the_day(): void
     {
-        $user = User::factory()->create(['name' => 'Carlos Muñoz']);
+        $user = User::factory()->create(['name' => 'Carlos Muñoz', 'role' => 'admin']);
         $mesa = Mesa::create(['numero' => '5', 'capacidad' => 4, 'estado' => 'disponible']);
 
         Pedido::create([

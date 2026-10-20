@@ -15,7 +15,7 @@ class PedidoFlowTest extends TestCase
 
     public function test_order_uses_catalog_price_and_occupies_the_table(): void
     {
-        $this->actingAs(User::factory()->create());
+        $this->actingAs(User::factory()->create(['role' => 'barista']));
         $mesa = $this->createMesa();
         $producto = $this->createProducto('1250.50');
 
@@ -42,7 +42,7 @@ class PedidoFlowTest extends TestCase
 
     public function test_order_rejects_an_occupied_table(): void
     {
-        $this->actingAs(User::factory()->create());
+        $this->actingAs(User::factory()->create(['role' => 'barista']));
         $mesa = $this->createMesa('ocupada');
         $producto = $this->createProducto();
 
@@ -55,7 +55,7 @@ class PedidoFlowTest extends TestCase
 
     public function test_order_rejects_a_table_with_an_active_order_even_if_marked_available(): void
     {
-        $this->actingAs(User::factory()->create());
+        $this->actingAs(User::factory()->create(['role' => 'barista']));
         $mesa = $this->createMesa();
         $producto = $this->createProducto();
         Pedido::create([
@@ -73,7 +73,7 @@ class PedidoFlowTest extends TestCase
 
     public function test_order_rejects_an_unavailable_product_without_changing_the_table(): void
     {
-        $this->actingAs(User::factory()->create());
+        $this->actingAs(User::factory()->create(['role' => 'barista']));
         $mesa = $this->createMesa();
         $producto = $this->createProducto('1000.00', false);
 
@@ -87,7 +87,7 @@ class PedidoFlowTest extends TestCase
 
     public function test_payment_marks_order_paid_and_releases_its_table_once(): void
     {
-        $this->actingAs(User::factory()->create());
+        $this->actingAs(User::factory()->create(['role' => 'barista']));
         [$mesa, $pedido] = $this->createActiveOrder();
 
         $this->postJson("/api/pedidos/{$pedido->id}/pagar", [
@@ -112,7 +112,7 @@ class PedidoFlowTest extends TestCase
 
     public function test_status_endpoint_cannot_bypass_payment_processing(): void
     {
-        $this->actingAs(User::factory()->create());
+        $this->actingAs(User::factory()->create(['role' => 'cocina']));
         [, $pedido] = $this->createActiveOrder();
 
         $this->patchJson("/api/kds/pedidos/{$pedido->id}/estado", [
@@ -129,7 +129,7 @@ class PedidoFlowTest extends TestCase
 
     public function test_paid_order_cannot_be_reopened_from_the_kitchen_status_endpoint(): void
     {
-        $this->actingAs(User::factory()->create());
+        $this->actingAs(User::factory()->create(['role' => 'cocina']));
         [, $pedido] = $this->createActiveOrder();
         $pedido->update(['estado' => 'pagado', 'metodo_pago' => 'efectivo']);
 

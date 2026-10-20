@@ -14,6 +14,15 @@ class User extends Authenticatable
     use HasFactory, Notifiable;
 
     /**
+     * Roles disponibles y su etiqueta legible.
+     */
+    public const ROLES = [
+        'admin' => 'Administrador',
+        'barista' => 'Barista',
+        'cocina' => 'Cocina',
+    ];
+
+    /**
      * The attributes that are mass assignable.
      *
      * @var list<string>
@@ -22,6 +31,7 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
+        'role',
     ];
 
     /**
@@ -45,5 +55,33 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
         ];
+    }
+
+    /**
+     * Indica si el usuario tiene alguno de los roles indicados.
+     */
+    public function hasRole(string ...$roles): bool
+    {
+        return in_array($this->role, $roles, true);
+    }
+
+    /**
+     * Ruta inicial según el rol (usada al iniciar sesión y en la raíz).
+     */
+    public function homeRoute(): string
+    {
+        return match ($this->role) {
+            'admin' => '/admin',
+            'cocina' => '/kds',
+            default => '/pos',
+        };
+    }
+
+    /**
+     * Etiqueta legible del rol para mostrar en la interfaz.
+     */
+    public function roleLabel(): string
+    {
+        return self::ROLES[$this->role] ?? ucfirst((string) $this->role);
     }
 }

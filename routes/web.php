@@ -13,9 +13,13 @@ Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
 Route::post('/login', [AuthController::class, 'login']);
 Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 
-// Redirección inicial
+// Redirección inicial según el rol del usuario
 Route::get('/', function () {
-    return redirect('/admin');
+    if (! auth()->check()) {
+        return redirect('/login');
+    }
+
+    return redirect(auth()->user()->homeRoute());
 });
 
 // Vista Carta Digital (Pública)
@@ -24,40 +28,60 @@ Route::get('/carta', [CartaController::class, 'index']);
 // Rutas Protegidas
 Route::middleware('auth')->group(function () {
 
-    // Vista KDS
-    Route::get('/kds', function () {
-        return view('kds.index');
-    });
-
-    // Vista POS
-    Route::get('/pos', [PosController::class, 'index']);
-
-    // Rutas Admin
-    Route::prefix('admin')->group(function () {
+    /*
+     |------------------------------------------------------------------
+     | Administración (solo Administrador)
+     |------------------------------------------------------------------
+     */
+    Route::middleware('role:admin')->prefix('admin')->group(function () {
         Route::get('/', [AdminController::class, 'dashboard']);
 
-        // CRUD Productos
-        Route::resource('productos', ProductController::class);
+        // CRUD Productos (sin show: no existe vista de detalle)
+        Route::resource('productos', ProductController::class)->except(['show']);
 
         // Cierre de Turno / Reporte Z
         Route::get('/cierre-turno', [AdminController::class, 'cierreTurno'])->name('admin.cierre-turno');
         Route::get('/cierre-turno/csv', [AdminController::class, 'cierreTurnoCsv'])->name('admin.cierre-turno.csv');
     });
 
-    // Rutas de API
-    Route::prefix('api')->group(function () {
+    /*
+     |------------------------------------------------------------------
+     | Punto de Venta (Administrador y Barista)
+     |------------------------------------------------------------------
+     */
+    Route::middleware('role:admin,barista')->group(function () {
+        Route::get('/pos', [PosController::class, 'index']);
+
         // Pedidos
-        Route::post('/pedidos', [PedidoController::class, 'store']);
-        Route::get('/kds/pedidos', [PedidoController::class, 'getPedidosCocina']);
-        Route::patch('/kds/pedidos/{pedido}/estado', [PedidoController::class, 'updateEstado']);
-        Route::post('/pedidos/{pedido}/pagar', [PedidoController::class, 'pagar']);
-        Route::get('/pedidos/{pedido}/ticket', [PedidoController::class, 'ticket'])->name('pedidos.ticket');
+        Route::post('/api/pedidos', [PedidoController::class, 'store']);
+        Route::post('/api/pedidos/{pedido}/pagar', [PedidoController::class, 'pagar']);
+        Route::get('/api/pedidos/{pedido}/ticket', [PedidoController::class, 'ticket'])->name('pedidos.ticket');
 
-        // POS Data
-        Route::get('/mesas', [PosController::class, 'getMesas']);
-        Route::get('/productos', [PosController::class, 'getProductos']);
+        // Datos del POS
+        Route::get('/api/mesas', [PosController::class, 'getMesas']);
+        Route::get('/api/productos', [PosController::class, 'getProductos']);
+    });
 
-        // Comanda de cocina (impresión térmica)
-        Route::get('/pedidos/{pedido}/comanda', [PedidoController::class, 'comanda'])->name('pedidos.comanda');
+    /*
+     |------------------------------------------------------------------
+     | Cocina / KDS (Administrador y Cocina)
+     |------------------------------------------------------------------
+     */
+    Route::middleware('role:admin,cocina')->group(function () {
+        Route::get('/kds', function () {
+            return view('kds.index');
+        });
+
+        Route::get('/api/kds/pedidos', [PedidoController::class, 'getPedidosCocina']);
+        Route::patch('/api/kds/pedidos/{pedido}/estado', [PedidoController::class, 'updateEstado']);
+    });
+
+    /*
+     |------------------------------------------------------------------
+     | Comanda de cocina (todos los roles operativos pueden reimprimir)
+     |------------------------------------------------------------------
+     */
+    Route::middleware('role:admin,barista,cocina')->group(function () {
+        Route::get('/api/pedidos/{pedido}/comanda', [PedidoController::class, 'comanda'])->name('pedidos.comanda');
     });
 });

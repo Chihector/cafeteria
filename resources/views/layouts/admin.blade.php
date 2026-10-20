@@ -51,7 +51,7 @@
                 </div>
                 <div>
                     <p class="font-bold text-sm line-clamp-1">{{ Auth::user()->name ?? 'Administrador' }}</p>
-                    <p class="text-white/40 text-xs">Conectado</p>
+                    <p class="text-white/40 text-xs">{{ Auth::user()->roleLabel() ?? 'Administrador' }}</p>
                 </div>
             </div>
             

@@ -44,10 +44,23 @@
                 </div>
             </div>
             <div class="flex items-center gap-4">
+                <div class="text-right">
+                    <p class="text-white/70 text-xs font-bold leading-tight">{{ Auth::user()->name }}</p>
+                    <p class="text-white/30 text-[10px] leading-tight">{{ Auth::user()->roleLabel() }}</p>
+                </div>
+                <span class="text-[10px] font-bold px-2 py-1 rounded-full border"
+                      :class="realtimeConectado ? 'text-green-400 border-green-400/30 bg-green-400/10' : 'text-amber-400 border-amber-400/30 bg-amber-400/10'"
+                      x-text="realtimeConectado ? '● En vivo' : '○ Auto-refresco'"></span>
                 <div class="text-white/40 text-xs font-mono font-medium" x-text="reloj"></div>
                 <button @click="cargarTodo()" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-white/5 hover:bg-white/10 text-white/70 transition-all border border-white/10">
                     ↻ Refrescar
                 </button>
+                <form action="{{ route('logout') }}" method="POST">
+                    @csrf
+                    <button type="submit" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-white/5 hover:bg-white/10 text-white/70 transition-all border border-white/10">
+                        Salir
+                    </button>
+                </form>
             </div>
         </div>
     </div>
@@ -225,14 +238,44 @@
             cargandoListo: false,
             now: new Date(),
             reloj: '',
+            realtimeConectado: false,
 
             init() {
                 this.cargarTodo();
+                this.iniciarTiempoReal();
+
+                // Respaldo: si el WebSocket no está conectado, refresca cada 12 s.
+                setInterval(() => this.refrescarRespaldo(), 12000);
+
+                window.addEventListener('cafeteria:realtime', (evento) => {
+                    this.realtimeConectado = evento.detail.conectado;
+                });
+
                 // Reloj cada segundo
                 setInterval(() => {
                     this.now = new Date();
                     this.reloj = this.now.toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
                 }, 1000);
+            },
+
+            iniciarTiempoReal() {
+                if (!window.CafeRoseRealtime) return;
+
+                window.CafeRoseRealtime.listo(() => {
+                    window.CafeRoseRealtime.suscribir('cocina', 'pedido.creado', () => {
+                        window.CafeRoseRealtime.beep();
+                        this.cargarTodo();
+                    });
+
+                    window.CafeRoseRealtime.suscribir('cocina', 'pedido.actualizado', () => {
+                        this.cargarTodo();
+                    });
+                });
+            },
+
+            refrescarRespaldo() {
+                if (document.hidden || this.realtimeConectado) return;
+                this.cargarTodo();
             },
 
             async cargarTodo() {
@@ -253,9 +296,16 @@
                 const keyCargando = 'cargando' + estado.charAt(0).toUpperCase() + estado.slice(1);
                 const keyPagina = 'pagina' + estado.charAt(0).toUpperCase() + estado.slice(1);
                 const keyHayMas = 'hayMas' + estado.charAt(0).toUpperCase() + estado.slice(1);
-                const keyLista = 'pedidos' + estado.charAt(0).toUpperCase() + estado.slice(1);
 
-                if (!this[keyHayMas]) return;
+                // Los arrays usan plural: pendiente -> pedidosPendientes, etc.
+                const listas = {
+                    pendiente: 'pedidosPendientes',
+                    preparando: 'pedidosPreparando',
+                    listo: 'pedidosListos',
+                };
+                const keyLista = listas[estado];
+
+                if (!keyLista || !this[keyHayMas]) return;
                 this[keyCargando] = true;
 
                 try {
@@ -314,14 +364,15 @@
                 const min = Math.floor(diffMs / 60000);
                 const seg = Math.floor((diffMs % 60000) / 1000);
                 return min.toString().padStart(2, '0') + ':' + seg.toString().padStart(2, '0');
-            }
+            },
 
             // Getters de compatibilidad (mantenidos por si se usan en templates)
-            get pedidosPendientesGetter() { return this.pedidosPendientes; }
-            get pedidosPreparandoGetter() { return this.pedidosPreparando; }
-            get pedidosListosGetter() { return this.pedidosListos; }
+            get pedidosPendientesGetter() { return this.pedidosPendientes; },
+            get pedidosPreparandoGetter() { return this.pedidosPreparando; },
+            get pedidosListosGetter() { return this.pedidosListos; },
         }
     }
 </script>
+@include('layouts.realtime')
 </body>
 </html>

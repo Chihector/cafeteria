@@ -12,6 +12,7 @@ class ProductController extends Controller
     public function index()
     {
         $productos = Producto::orderBy('id', 'desc')->get();
+
         return view('admin.productos.index', compact('productos'));
     }
 
@@ -63,9 +64,9 @@ class ProductController extends Controller
         $validated['disponible'] = $request->has('disponible');
         $validated['destacado'] = $request->has('destacado');
         $validated['vegetariano'] = $request->has('vegetariano');
-        
+
         // Si la vista no envía alergenos, se borran (Laravel no manda el array si están todos desmarcados)
-        if (!$request->has('alergenos')) {
+        if (! $request->has('alergenos')) {
             $validated['alergenos'] = [];
         }
 
@@ -83,10 +84,18 @@ class ProductController extends Controller
 
     public function destroy(Producto $producto)
     {
+        // Si el producto ya forma parte de pedidos históricos, borrarlo
+        // arrastraría esas líneas (FK cascade) y descuadraría reportes pasados.
+        if ($producto->detalles()->exists()) {
+            return redirect()
+                ->route('productos.index')
+                ->with('error', 'No se puede eliminar un producto con pedidos registrados. Desactívalo para ocultarlo del POS y la carta.');
+        }
+
         if ($producto->imagen) {
             Storage::disk('public')->delete($producto->imagen);
         }
-        
+
         $producto->delete();
 
         return redirect()->route('productos.index')->with('success', 'Producto eliminado exitosamente.');

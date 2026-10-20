@@ -2,30 +2,38 @@
 
 namespace Database\Seeders;
 
-use App\Models\User;
 use App\Models\Mesa;
-use App\Models\Producto;
 use App\Models\Pedido;
-use Illuminate\Database\Console\Seeds\WithoutModelEvents;
+use App\Models\Producto;
+use App\Models\User;
 use Illuminate\Database\Seeder;
 
 class DatabaseSeeder extends Seeder
 {
     public function run(): void
     {
-        $user = User::factory()->create([
-            'name' => 'Carlos Muñoz',
-            'email' => 'barista@test.com',
-            'password' => bcrypt('password'),
-        ]);
+        // Usuarios de demostración, uno por rol (idempotente).
+        $admin = User::updateOrCreate(
+            ['email' => 'admin@test.com'],
+            ['name' => 'Ana Torres', 'password' => bcrypt('password'), 'role' => 'admin'],
+        );
+
+        $user = User::updateOrCreate(
+            ['email' => 'barista@test.com'],
+            ['name' => 'Carlos Muñoz', 'password' => bcrypt('password'), 'role' => 'barista'],
+        );
+
+        User::updateOrCreate(
+            ['email' => 'cocina@test.com'],
+            ['name' => 'Lucía Fernández', 'password' => bcrypt('password'), 'role' => 'cocina'],
+        );
 
         // Crear Mesas
         for ($i = 1; $i <= 10; $i++) {
-            Mesa::create([
-                'numero' => $i,
-                'capacidad' => 4,
-                'estado' => 'disponible',
-            ]);
+            Mesa::firstOrCreate(
+                ['numero' => $i],
+                ['capacidad' => 4, 'estado' => 'disponible'],
+            );
         }
 
         // Crear Productos desde Figma
@@ -77,62 +85,65 @@ class DatabaseSeeder extends Seeder
                 'descripcion' => 'Café, leche y chocolate mezclados con hielo, coronados con crema batida.',
                 'imagen' => 'https://images.unsplash.com/photo-1556679343-c7306c1976bc?w=400&h=300&fit=crop&auto=format',
                 'destacado' => false, 'alergenos' => ['Lácteos'], 'vegetariano' => true,
-            ]
+            ],
         ];
 
         $prods = [];
         foreach ($productosData as $p) {
-            $prods[$p['nombre']] = Producto::create($p);
+            $prods[$p['nombre']] = Producto::firstOrCreate(['nombre' => $p['nombre']], $p);
         }
 
         $kdsOrders = [
             [
-                'mesa' => 4, 'status' => 'pendiente', 
+                'mesa' => 4, 'status' => 'pendiente',
                 'items' => [
                     ['name' => 'Cappuccino Clásico', 'qty' => 2, 'notes' => 'Leche descremada'],
                     ['name' => 'Croissant de Almendras', 'qty' => 2, 'notes' => null],
                     ['name' => 'Iced Matcha Latte', 'qty' => 1, 'notes' => 'Sin azúcar'],
-                ]
+                ],
             ],
             [
-                'mesa' => 7, 'status' => 'pendiente', 
+                'mesa' => 7, 'status' => 'pendiente',
                 'items' => [
                     ['name' => 'Latte Macchiato Caramel', 'qty' => 1, 'notes' => null],
                     ['name' => 'Muffin de Arándanos', 'qty' => 1, 'notes' => null],
-                ]
+                ],
             ],
             [
-                'mesa' => 2, 'status' => 'preparando', 
+                'mesa' => 2, 'status' => 'preparando',
                 'items' => [
                     ['name' => 'Sándwich Caprese', 'qty' => 1, 'notes' => 'Sin pesto'],
                     ['name' => 'Avocado Toast', 'qty' => 1, 'notes' => null],
                     ['name' => 'Frappé de Moca', 'qty' => 1, 'notes' => 'Con crema'],
-                ]
-            ]
+                ],
+            ],
         ];
 
-        foreach ($kdsOrders as $orderData) {
-            $total = 0;
-            foreach ($orderData['items'] as $item) {
-                $total += $prods[$item['name']]->precio * $item['qty'];
-            }
+        // Solo se crean comandas de ejemplo si aún no hay pedidos (evita duplicados al re-sembrar).
+        if (Pedido::count() === 0) {
+            foreach ($kdsOrders as $orderData) {
+                $total = 0;
+                foreach ($orderData['items'] as $item) {
+                    $total += $prods[$item['name']]->precio * $item['qty'];
+                }
 
-            $pedido = Pedido::create([
-                'mesa_id' => $orderData['mesa'],
-                'user_id' => $user->id,
-                'estado' => $orderData['status'],
-                'total' => $total,
-            ]);
-
-            Mesa::where('numero', $orderData['mesa'])->update(['estado' => 'ocupada']);
-
-            foreach ($orderData['items'] as $item) {
-                $pedido->detalles()->create([
-                    'producto_id' => $prods[$item['name']]->id,
-                    'cantidad' => $item['qty'],
-                    'precio_unitario' => $prods[$item['name']]->precio,
-                    'notas_especiales' => $item['notes'],
+                $pedido = Pedido::create([
+                    'mesa_id' => $orderData['mesa'],
+                    'user_id' => $user->id,
+                    'estado' => $orderData['status'],
+                    'total' => $total,
                 ]);
+
+                Mesa::where('numero', $orderData['mesa'])->update(['estado' => 'ocupada']);
+
+                foreach ($orderData['items'] as $item) {
+                    $pedido->detalles()->create([
+                        'producto_id' => $prods[$item['name']]->id,
+                        'cantidad' => $item['qty'],
+                        'precio_unitario' => $prods[$item['name']]->precio,
+                        'notas_especiales' => $item['notes'],
+                    ]);
+                }
             }
         }
     }

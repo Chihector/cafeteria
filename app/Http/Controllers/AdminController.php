@@ -15,8 +15,9 @@ class AdminController extends Controller
     {
         $hoy = Carbon::today();
 
+        // Solo los pedidos cobrados cuentan como venta, igual que en el Reporte Z.
         $ventasHoy = Pedido::whereDate('created_at', $hoy)
-            ->whereNotIn('estado', ['pendiente', 'preparando'])
+            ->where('estado', 'pagado')
             ->sum('total');
 
         $pedidosHoy = Pedido::whereDate('created_at', $hoy)->count();
