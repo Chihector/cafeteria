@@ -45,7 +45,7 @@
                 <label class="block text-white/60 text-xs font-bold mb-2 uppercase tracking-wide">Correo Electrónico</label>
                 <input type="email" name="email" value="{{ old('email') }}" required autofocus
                     class="w-full bg-[#111318] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-terracotta focus:ring-1 focus:ring-terracotta transition-colors"
-                    placeholder="garzon@test.com">
+                    placeholder="admin@test.com">
             </div>
 
             <div>
@@ -68,7 +68,8 @@
         </form>
 
         <div class="mt-8 text-center border-t border-white/5 pt-6">
-            <p class="text-white/30 text-xs">Para pruebas, usa:<br><span class="text-white/50 font-mono">garzon@test.com</span> / <span class="text-white/50 font-mono">password</span></p>
+            <p class="text-white/30 text-xs">Credenciales de prueba (password: <span class="text-white/50 font-mono">password</span>)</p>
+            <p class="text-white/40 text-xs mt-1 font-mono">admin@test.com · barista@test.com · cocina@test.com</p>
         </div>
     </div>
 </body>
