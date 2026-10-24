@@ -41,15 +41,36 @@
                     <label class="block text-sm font-bold text-gray-700 mb-2">Categoría</label>
                     <select name="categoria" class="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-gray-800 focus:outline-none focus:ring-2 focus:ring-terracotta/50 focus:border-terracotta transition-all" required>
                         <option value="">Seleccione...</option>
-                        <option value="cafes" {{ old('categoria') == 'cafes' ? 'selected' : '' }}>Cafés</option>
-                        <option value="pasteleria" {{ old('categoria') == 'pasteleria' ? 'selected' : '' }}>Pastelería</option>
+                        <option value="coffee" {{ old('categoria') == 'coffee' ? 'selected' : '' }}>Cafés</option>
+                        <option value="pastries" {{ old('categoria') == 'pastries' ? 'selected' : '' }}>Pastelería</option>
                         <option value="sandwiches" {{ old('categoria') == 'sandwiches' ? 'selected' : '' }}>Sándwiches</option>
-                        <option value="bebidas_frias" {{ old('categoria') == 'bebidas_frias' ? 'selected' : '' }}>Bebidas Frías</option>
+                        <option value="cold_drinks" {{ old('categoria') == 'cold_drinks' ? 'selected' : '' }}>Bebidas Frías</option>
                     </select>
                     @error('categoria') <span class="text-red-500 text-xs mt-1">{{ $message }}</span> @enderror
                 </div>
             </div>
-            
+
+            <div class="bg-gray-50 p-5 rounded-xl border border-gray-100 space-y-4">
+                <h4 class="font-bold text-gray-800 border-b border-gray-200 pb-2">Inventario</h4>
+                <label class="flex items-center gap-3 cursor-pointer">
+                    <input type="checkbox" name="controlar_stock" value="1" class="text-terracotta rounded focus:ring-terracotta" {{ old('controlar_stock') ? 'checked' : '' }}>
+                    <span class="text-sm font-bold text-gray-800">Controlar stock de este producto</span>
+                </label>
+                <p class="text-xs text-gray-500 -mt-2">Si está activo, cada venta descuenta unidades y no se podrá pedir sin stock.</p>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-2">Stock inicial</label>
+                        <input type="number" name="stock" min="0" value="{{ old('stock', 0) }}" class="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-gray-800 focus:outline-none focus:ring-2 focus:ring-terracotta/50 focus:border-terracotta transition-all">
+                        @error('stock') <span class="text-red-500 text-xs mt-1">{{ $message }}</span> @enderror
+                    </div>
+                    <div>
+                        <label class="block text-sm font-bold text-gray-700 mb-2">Stock mínimo</label>
+                        <input type="number" name="stock_minimo" min="0" value="{{ old('stock_minimo', 0) }}" class="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-gray-800 focus:outline-none focus:ring-2 focus:ring-terracotta/50 focus:border-terracotta transition-all">
+                        @error('stock_minimo') <span class="text-red-500 text-xs mt-1">{{ $message }}</span> @enderror
+                    </div>
+                </div>
+            </div>
+
             <div>
                 <label class="block text-sm font-bold text-gray-700 mb-2">Alérgenos</label>
                 <div class="flex flex-wrap gap-3">

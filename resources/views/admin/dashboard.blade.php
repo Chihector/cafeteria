@@ -43,10 +43,47 @@
                 <h3 class="font-black text-lg text-gray-800 mb-1">Cierre de Turno (Z)</h3>
                 <p class="text-gray-500 text-sm leading-relaxed">Reporte de ventas del día por método de pago para cuadrar caja.</p>
             </a>
+
+            <!-- Inventario -->
+            <a href="{{ route('admin.inventario') }}" class="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all group block">
+                <div class="w-14 h-14 bg-amber-50 text-amber-500 rounded-2xl flex items-center justify-center text-2xl mb-4 group-hover:bg-amber-500 group-hover:text-white transition-colors">
+                    📦
+                </div>
+                <h3 class="font-black text-lg text-gray-800 mb-1">Inventario</h3>
+                <p class="text-gray-500 text-sm leading-relaxed">Stock, alertas de mínimos y movimientos de productos.</p>
+            </a>
+
+            <!-- Auditoría -->
+            <a href="{{ route('admin.auditoria') }}" class="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all group block">
+                <div class="w-14 h-14 bg-indigo-50 text-indigo-500 rounded-2xl flex items-center justify-center text-2xl mb-4 group-hover:bg-indigo-500 group-hover:text-white transition-colors">
+                    📋
+                </div>
+                <h3 class="font-black text-lg text-gray-800 mb-1">Auditoría</h3>
+                <p class="text-gray-500 text-sm leading-relaxed">Historial de acciones sensibles: pedidos, cobros, productos e inventario.</p>
+            </a>
+
+            <!-- Impresora -->
+            <a href="{{ route('admin.impresora') }}" class="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all group block">
+                <div class="w-14 h-14 bg-slate-100 text-slate-600 rounded-2xl flex items-center justify-center text-2xl mb-4 group-hover:bg-slate-700 group-hover:text-white transition-colors">
+                    🖨️
+                </div>
+                <h3 class="font-black text-lg text-gray-800 mb-1">Impresora</h3>
+                <p class="text-gray-500 text-sm leading-relaxed">Estado y prueba de la térmica de red para comandas y tickets.</p>
+            </a>
         </div>
 
+        @if($productosStockBajo > 0)
+        <a href="{{ route('admin.inventario') }}" class="flex items-center gap-3 bg-amber-50 border border-amber-200 text-amber-800 p-4 rounded-2xl mb-6 hover:bg-amber-100 transition-colors">
+            <span class="text-2xl">⚠️</span>
+            <div>
+                <p class="font-bold">Hay {{ $productosStockBajo }} producto(s) en o bajo el stock mínimo.</p>
+                <p class="text-sm text-amber-700">Revisa el inventario para reponer antes de que se agoten.</p>
+            </div>
+        </a>
+        @endif
+
         <h2 class="text-2xl font-black text-gray-800 mb-6">Resumen de Hoy</h2>
-        
+
         <!-- Stats -->
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
             <div class="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm flex flex-col justify-center">

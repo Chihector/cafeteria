@@ -4,7 +4,6 @@ namespace App\Http\Controllers;
 
 use App\Models\Mesa;
 use App\Models\Producto;
-use Illuminate\Http\Request;
 
 class PosController extends Controller
 {
@@ -27,6 +26,7 @@ class PosController extends Controller
                 $mesa->barista = $pedido->garzon ? $pedido->garzon->name : 'Desconocido';
                 $mesa->tiempo_ocupada = $pedido->created_at->diffForHumans();
             }
+
             return $mesa;
         });
 
@@ -35,6 +35,12 @@ class PosController extends Controller
 
     public function getProductos()
     {
-        return response()->json(Producto::where('disponible', true)->get());
+        // Un producto agotado no se puede vender, aunque siga marcado como disponible.
+        $productos = Producto::where('disponible', true)
+            ->get()
+            ->filter(fn (Producto $producto) => ! $producto->controlar_stock || $producto->stock > 0)
+            ->values();
+
+        return response()->json($productos);
     }
 }

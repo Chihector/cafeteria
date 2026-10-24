@@ -90,6 +90,8 @@ class DatabaseSeeder extends Seeder
 
         $prods = [];
         foreach ($productosData as $p) {
+            // Los productos de demostración nacen con control de stock.
+            $p += ['controlar_stock' => true, 'stock' => 40, 'stock_minimo' => 8];
             $prods[$p['nombre']] = Producto::firstOrCreate(['nombre' => $p['nombre']], $p);
         }
 

@@ -1,5 +1,8 @@
 <?php
 
+use App\Http\Controllers\Admin\AuditoriaController;
+use App\Http\Controllers\Admin\ImpresoraController;
+use App\Http\Controllers\Admin\InventarioController;
 use App\Http\Controllers\Admin\ProductController;
 use App\Http\Controllers\AdminController;
 use App\Http\Controllers\AuthController;
@@ -14,13 +17,7 @@ Route::post('/login', [AuthController::class, 'login']);
 Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 
 // Redirección inicial según el rol del usuario
-Route::get('/', function () {
-    if (! auth()->check()) {
-        return redirect('/login');
-    }
-
-    return redirect(auth()->user()->homeRoute());
-});
+Route::get('/', [AuthController::class, 'home']);
 
 // Vista Carta Digital (Pública)
 Route::get('/carta', [CartaController::class, 'index']);
@@ -42,6 +39,19 @@ Route::middleware('auth')->group(function () {
         // Cierre de Turno / Reporte Z
         Route::get('/cierre-turno', [AdminController::class, 'cierreTurno'])->name('admin.cierre-turno');
         Route::get('/cierre-turno/csv', [AdminController::class, 'cierreTurnoCsv'])->name('admin.cierre-turno.csv');
+
+        // Inventario
+        Route::get('/inventario', [InventarioController::class, 'index'])->name('admin.inventario');
+        Route::post('/inventario/{producto}/entrada', [InventarioController::class, 'entrada'])->name('admin.inventario.entrada');
+        Route::post('/inventario/{producto}/ajuste', [InventarioController::class, 'ajuste'])->name('admin.inventario.ajuste');
+
+        // Auditoría
+        Route::get('/auditoria', [AuditoriaController::class, 'index'])->name('admin.auditoria');
+
+        // Impresora térmica de red (Fase 13)
+        Route::get('/impresora', [ImpresoraController::class, 'index'])->name('admin.impresora');
+        Route::post('/impresora/probar', [ImpresoraController::class, 'probar'])->name('admin.impresora.probar');
+        Route::post('/impresora/comprobar', [ImpresoraController::class, 'comprobar'])->name('admin.impresora.comprobar');
     });
 
     /*
@@ -68,9 +78,7 @@ Route::middleware('auth')->group(function () {
      |------------------------------------------------------------------
      */
     Route::middleware('role:admin,cocina')->group(function () {
-        Route::get('/kds', function () {
-            return view('kds.index');
-        });
+        Route::view('/kds', 'kds.index');
 
         Route::get('/api/kds/pedidos', [PedidoController::class, 'getPedidosCocina']);
         Route::patch('/api/kds/pedidos/{pedido}/estado', [PedidoController::class, 'updateEstado']);

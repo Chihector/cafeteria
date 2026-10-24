@@ -42,6 +42,18 @@
                 <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>
                 Productos
             </a>
+            <a href="{{ route('admin.inventario') }}" class="flex items-center gap-3 {{ request()->is('admin/inventario*') ? 'bg-terracotta/10 text-terracotta' : 'text-white/60 hover:text-white hover:bg-white/5' }} px-4 py-3 rounded-xl font-medium transition-colors">
+                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg>
+                Inventario
+            </a>
+            <a href="{{ route('admin.auditoria') }}" class="flex items-center gap-3 {{ request()->is('admin/auditoria*') ? 'bg-terracotta/10 text-terracotta' : 'text-white/60 hover:text-white hover:bg-white/5' }} px-4 py-3 rounded-xl font-medium transition-colors">
+                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" /></svg>
+                Auditoría
+            </a>
+            <a href="{{ route('admin.impresora') }}" class="flex items-center gap-3 {{ request()->is('admin/impresora*') ? 'bg-terracotta/10 text-terracotta' : 'text-white/60 hover:text-white hover:bg-white/5' }} px-4 py-3 rounded-xl font-medium transition-colors">
+                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4H7v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
+                Impresora
+            </a>
         </div>
         
         <div class="p-6 border-t border-white/5 flex flex-col gap-4">

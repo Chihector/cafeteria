@@ -23,11 +23,19 @@ class AdminController extends Controller
         $pedidosHoy = Pedido::whereDate('created_at', $hoy)->count();
         $mesasActivas = Mesa::where('estado', 'ocupada')->count();
         $productosTotales = Producto::count();
+        $productosStockBajo = Producto::conStockBajo()->count();
 
         // El enlace a la carta para generar el QR
         $urlCarta = url('/carta');
 
-        return view('admin.dashboard', compact('ventasHoy', 'pedidosHoy', 'mesasActivas', 'productosTotales', 'urlCarta'));
+        return view('admin.dashboard', compact(
+            'ventasHoy',
+            'pedidosHoy',
+            'mesasActivas',
+            'productosTotales',
+            'productosStockBajo',
+            'urlCarta',
+        ));
     }
 
     public function cierreTurno(Request $request)

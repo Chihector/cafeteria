@@ -36,6 +36,7 @@
                     <th class="p-4 border-b border-gray-100">Producto</th>
                     <th class="p-4 border-b border-gray-100">Categoría</th>
                     <th class="p-4 border-b border-gray-100">Precio</th>
+                    <th class="p-4 border-b border-gray-100 text-center">Stock</th>
                     <th class="p-4 border-b border-gray-100 text-center">Estado</th>
                     <th class="p-4 border-b border-gray-100 text-right">Acciones</th>
                 </tr>
@@ -61,6 +62,14 @@
                     </td>
                     <td class="p-4 font-bold text-gray-800">
                         ${{ number_format($producto->precio, 0, ',', '.') }}
+                    </td>
+                    <td class="p-4 text-center">
+                        @if($producto->controlar_stock)
+                            <span class="font-black {{ $producto->stockBajo() ? 'text-red-600' : 'text-gray-800' }}">{{ $producto->stock }}</span>
+                            <span class="text-[10px] text-gray-400 block">mín. {{ $producto->stock_minimo }}</span>
+                        @else
+                            <span class="text-xs text-gray-400">Sin control</span>
+                        @endif
                     </td>
                     <td class="p-4 text-center">
                         @if($producto->disponible)
@@ -90,7 +99,7 @@
                 </tr>
                 @empty
                 <tr>
-                    <td colspan="5" class="p-8 text-center text-gray-400">
+                    <td colspan="6" class="p-8 text-center text-gray-400">
                         No hay productos registrados. <a href="{{ route('productos.create') }}" class="text-terracotta underline">Crea el primero</a>.
                     </td>
                 </tr>

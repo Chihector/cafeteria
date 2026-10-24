@@ -20,6 +20,9 @@ class RoleAccessTest extends TestCase
             '/admin/productos',
             '/admin/cierre-turno',
             '/admin/cierre-turno/csv',
+            '/admin/inventario',
+            '/admin/auditoria',
+            '/admin/impresora',
             '/pos',
             '/kds',
             '/api/mesas',
@@ -78,6 +81,9 @@ class RoleAccessTest extends TestCase
         $this->get('/admin/productos')->assertOk();
         $this->get('/admin/cierre-turno')->assertOk();
         $this->get('/admin/cierre-turno/csv')->assertOk();
+        $this->get('/admin/inventario')->assertOk();
+        $this->get('/admin/auditoria')->assertOk();
+        $this->get('/admin/impresora')->assertOk();
         $this->get('/pos')->assertOk();
         $this->get('/kds')->assertOk();
         $this->get('/api/mesas')->assertOk();
@@ -106,6 +112,9 @@ class RoleAccessTest extends TestCase
         $this->get('/admin/productos')->assertForbidden();
         $this->get('/admin/cierre-turno')->assertForbidden();
         $this->get('/admin/cierre-turno/csv')->assertForbidden();
+        $this->get('/admin/inventario')->assertForbidden();
+        $this->get('/admin/auditoria')->assertForbidden();
+        $this->get('/admin/impresora')->assertForbidden();
         $this->get('/kds')->assertForbidden();
         $this->get('/api/kds/pedidos')->assertForbidden();
         $this->patchJson("/api/kds/pedidos/{$pedido->id}/estado", [
@@ -134,6 +143,9 @@ class RoleAccessTest extends TestCase
         $this->get('/admin/productos')->assertForbidden();
         $this->get('/admin/cierre-turno')->assertForbidden();
         $this->get('/admin/cierre-turno/csv')->assertForbidden();
+        $this->get('/admin/inventario')->assertForbidden();
+        $this->get('/admin/auditoria')->assertForbidden();
+        $this->get('/admin/impresora')->assertForbidden();
         $this->get('/api/mesas')->assertForbidden();
         $this->get('/api/productos')->assertForbidden();
         $this->postJson('/api/pedidos', [])->assertForbidden();

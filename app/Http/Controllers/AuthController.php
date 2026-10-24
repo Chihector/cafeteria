@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Auditoria;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
@@ -10,6 +11,18 @@ class AuthController extends Controller
     public function showLogin()
     {
         return view('auth.login');
+    }
+
+    /**
+     * Redirige al módulo principal según el rol (o al login si es invitado).
+     */
+    public function home()
+    {
+        if (! auth()->check()) {
+            return redirect('/login');
+        }
+
+        return redirect(auth()->user()->homeRoute());
     }
 
     public function login(Request $request)
@@ -22,6 +35,14 @@ class AuthController extends Controller
         if (Auth::attempt($credentials, $request->boolean('remember'))) {
             $request->session()->regenerate();
 
+            Auditoria::registrar(
+                'login',
+                'auth',
+                'Inicio de sesión de '.auth()->user()->email,
+                auth()->user(),
+                ['rol' => auth()->user()->role],
+            );
+
             // Cada rol aterriza en su módulo principal.
             return redirect(auth()->user()->homeRoute());
         }
@@ -33,6 +54,15 @@ class AuthController extends Controller
 
     public function logout(Request $request)
     {
+        if (auth()->check()) {
+            Auditoria::registrar(
+                'logout',
+                'auth',
+                'Cierre de sesión de '.auth()->user()->email,
+                auth()->user(),
+            );
+        }
+
         Auth::logout();
         $request->session()->invalidate();
         $request->session()->regenerateToken();

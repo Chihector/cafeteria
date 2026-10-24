@@ -4,9 +4,12 @@ namespace App\Http\Controllers;
 
 use App\Events\PedidoActualizado;
 use App\Events\PedidoCreado;
+use App\Models\Auditoria;
 use App\Models\Mesa;
 use App\Models\Pedido;
 use App\Models\Producto;
+use App\Services\InventarioService;
+use App\Services\Printing\PrinterService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -14,6 +17,11 @@ use Illuminate\Validation\ValidationException;
 class PedidoController extends Controller
 {
     private const ESTADOS_ACTIVOS = ['pendiente', 'preparando', 'listo', 'entregado'];
+
+    public function __construct(
+        private readonly InventarioService $inventario,
+        private readonly PrinterService $impresora,
+    ) {}
 
     public function store(Request $request)
     {
@@ -34,24 +42,43 @@ class PedidoController extends Controller
                 ]);
             }
 
-            $productos = [];
-            $totalEnCentavos = 0;
-            foreach ($validated['productos'] as $index => $item) {
-                $producto = Producto::query()
-                    ->whereKey($item['producto_id'])
-                    ->where('disponible', true)
-                    ->lockForUpdate()
-                    ->first();
+            // Agrupa cantidades para validar el stock una sola vez por producto,
+            // incluso si el mismo producto viene en varias líneas del carrito.
+            $cantidades = [];
+            foreach ($validated['productos'] as $item) {
+                $id = (int) $item['producto_id'];
+                $cantidades[$id] = ($cantidades[$id] ?? 0) + (int) $item['cantidad'];
+            }
 
-                if (! $producto) {
+            $productos = Producto::query()
+                ->whereIn('id', array_keys($cantidades))
+                ->where('disponible', true)
+                ->lockForUpdate()
+                ->get()
+                ->keyBy('id');
+
+            foreach ($validated['productos'] as $index => $item) {
+                if (! $productos->has((int) $item['producto_id'])) {
                     throw ValidationException::withMessages([
                         "productos.{$index}.producto_id" => 'El producto no existe o no está disponible.',
                     ]);
                 }
+            }
 
-                $productos[] = [$item, $producto];
+            foreach ($cantidades as $productoId => $cantidad) {
+                $producto = $productos->get($productoId);
+                if ($producto->controlar_stock && $producto->stock < $cantidad) {
+                    throw ValidationException::withMessages([
+                        'productos' => "Stock insuficiente para {$producto->nombre}: disponible {$producto->stock}, solicitado {$cantidad}.",
+                    ]);
+                }
+            }
+
+            $totalEnCentavos = 0;
+            foreach ($validated['productos'] as $item) {
+                $producto = $productos->get((int) $item['producto_id']);
                 $precioEnCentavos = (int) round((float) $producto->precio * 100);
-                $totalEnCentavos += $precioEnCentavos * $item['cantidad'];
+                $totalEnCentavos += $precioEnCentavos * (int) $item['cantidad'];
             }
 
             $pedido = Pedido::create([
@@ -62,13 +89,18 @@ class PedidoController extends Controller
                 'observaciones' => $validated['observaciones'] ?? null,
             ]);
 
-            foreach ($productos as [$item, $producto]) {
+            foreach ($validated['productos'] as $item) {
+                $producto = $productos->get((int) $item['producto_id']);
                 $pedido->detalles()->create([
                     'producto_id' => $producto->id,
                     'cantidad' => $item['cantidad'],
                     'precio_unitario' => $producto->precio,
                     'notas_especiales' => $item['notas_especiales'] ?? null,
                 ]);
+            }
+
+            foreach ($cantidades as $productoId => $cantidad) {
+                $this->inventario->registrarVenta($productos->get($productoId), $cantidad, $pedido);
             }
 
             $mesa->update(['estado' => 'ocupada']);
@@ -79,9 +111,24 @@ class PedidoController extends Controller
         // Aviso en tiempo real a cocina y al resto de los POS.
         PedidoCreado::dispatch($pedido);
 
+        $pedido->load('detalles.producto', 'mesa', 'garzon');
+
+        Auditoria::registrar(
+            'crear',
+            'pedidos',
+            "Pedido #{$pedido->id} creado para mesa ".($pedido->mesa->numero ?? 'N/A'),
+            $pedido,
+            ['total' => $pedido->total, 'estado' => $pedido->estado],
+        );
+
+        // Impresión física directa (si está configurada); si falla, el POS
+        // recibe fallback=true y abre la comanda en el navegador.
+        $impresion = $this->impresora->comandaAutomatica($pedido);
+
         return response()->json([
             'message' => 'Pedido creado exitosamente',
-            'pedido' => $pedido->load('detalles'),
+            'pedido' => $pedido,
+            'impresion' => $impresion->toArray(),
         ], 201);
     }
 
@@ -111,7 +158,7 @@ class PedidoController extends Controller
             'estado' => 'required|in:pendiente,preparando,listo,entregado',
         ]);
 
-        $pedido = DB::transaction(function () use ($pedido, $validated) {
+        [$pedido, $estadoAnterior] = DB::transaction(function () use ($pedido, $validated) {
             $pedido = Pedido::query()->lockForUpdate()->findOrFail($pedido->id);
             if (! in_array($pedido->estado, self::ESTADOS_ACTIVOS, true)) {
                 throw ValidationException::withMessages([
@@ -119,13 +166,22 @@ class PedidoController extends Controller
                 ]);
             }
 
+            $anterior = $pedido->estado;
             $pedido->update(['estado' => $validated['estado']]);
 
-            return $pedido;
+            return [$pedido, $anterior];
         });
 
         // Mantiene sincronizados el KDS y el POS de otros dispositivos.
         PedidoActualizado::dispatch($pedido->id, $pedido->mesa_id, $pedido->estado, 'ocupada');
+
+        Auditoria::registrar(
+            'actualizar_estado',
+            'pedidos',
+            "Pedido #{$pedido->id}: {$estadoAnterior} → {$pedido->estado}",
+            $pedido,
+            ['estado_anterior' => $estadoAnterior, 'estado_nuevo' => $pedido->estado],
+        );
 
         return response()->json(['message' => 'Estado actualizado', 'estado' => $pedido->estado]);
     }
@@ -163,7 +219,26 @@ class PedidoController extends Controller
         // Aviso en tiempo real: el KDS quita la comanda y los POS liberan la mesa.
         PedidoActualizado::dispatch($pedido->id, $pedido->mesa_id, $pedido->estado, $mesaEstado);
 
-        return response()->json(['message' => 'Mesa cobrada exitosamente', 'pedido' => $pedido]);
+        Auditoria::registrar(
+            'cobrar',
+            'pedidos',
+            "Pedido #{$pedido->id} cobrado ({$pedido->metodo_pago})",
+            $pedido,
+            [
+                'total' => $pedido->total,
+                'propina' => $pedido->propina,
+                'metodo_pago' => $pedido->metodo_pago,
+            ],
+        );
+
+        $pedido->load('detalles.producto', 'mesa', 'garzon');
+        $impresion = $this->impresora->ticketAutomatico($pedido);
+
+        return response()->json([
+            'message' => 'Mesa cobrada exitosamente',
+            'pedido' => $pedido,
+            'impresion' => $impresion->toArray(),
+        ]);
     }
 
     public function ticket(Pedido $pedido)

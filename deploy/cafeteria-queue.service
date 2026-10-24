@@ -1,0 +1,20 @@
+[Unit]
+Description=Cafe Rose - Queue Worker
+Documentation=https://laravel.com/docs/queues
+After=network-online.target mysql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/cafeteria
+ExecStart=/usr/bin/php artisan queue:work --sleep=1 --tries=3 --timeout=90
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=cafeteria-queue
+
+[Install]
+WantedBy=multi-user.target

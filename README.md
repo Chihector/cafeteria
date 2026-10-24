@@ -1,5 +1,7 @@
 # Café Rosé - Sistema de Gestión para Cafetería
 
+[![CI](https://github.com/chicohector953/cafeteria/actions/workflows/ci.yml/badge.svg)](https://github.com/chicohector953/cafeteria/actions/workflows/ci.yml)
+
 Este proyecto es un sistema web para la gestión de una cafetería, construido con **Laravel 12**, **Alpine.js** y **Tailwind CSS**.
 
 Incluye carta digital, punto de venta, pantalla de cocina/barra y panel de administración. Las operaciones se guardan en la base de datos; el KDS consulta pedidos mediante su API paginada. La interfaz usa un diseño mobile-first en tonos rosados.
@@ -42,6 +44,19 @@ Sigue estos pasos para levantar el proyecto localmente y poder retomar el desarr
    php artisan serve --host=0.0.0.0 --port=8000
    ```
    > **Nota:** El uso del flag `--host` permite que puedas acceder a la aplicación desde tu celular ingresando la IP local de tu computador (ej. `http://192.168.x.x:8000`). Esto es crucial para probar las interfaces Mobile-First.
+
+5. **(Opcional) Impresora térmica de red:**
+   - Si tienes una Epson/Xprinter en la misma red, agrega al `.env`:
+     ```env
+     PRINTER_ENABLED=true
+     PRINTER_HOST=192.168.1.50
+     PRINTER_PORT=9100
+     PRINTER_WIDTH=42
+     ```
+   - Reinicia `php artisan config:clear` y prueba desde **Admin → Impresora**.
+   - Si está desactivada o falla, el POS sigue usando la impresión por navegador.
+
+> **Producción:** sigue la guía completa en [`deploy/README.md`](deploy/README.md) (MySQL, Nginx, HTTPS, Reverb con systemd, colas y backups).
 
 ---
 
@@ -191,6 +206,42 @@ Variables relevantes en `.env` (ya generadas por `install:broadcasting`):
 `BROADCAST_CONNECTION=reverb`, `REVERB_APP_ID`, `REVERB_APP_KEY`, `REVERB_APP_SECRET`, `REVERB_HOST`, `REVERB_PORT`, `REVERB_SCHEME`.
 El cliente usa el mismo host desde el que se abrió la página cuando `REVERB_HOST` es `localhost`/`127.0.0.1`, lo que permite probar desde el celular con la IP de la LAN (Reverb debe escuchar en `0.0.0.0`). En producción, define `REVERB_HOST` con el dominio real y usa `REVERB_SCHEME=https`.
 
+### 14. Impresión física automática (Fase 13)
+- **Estado:** ✅ Completado
+- **Motor:** comandos **ESC/POS** enviados por TCP al puerto **9100** de la impresora (Epson TM, Xprinter XP, etc.). No requiere paquetes adicionales.
+- **Configuración:** `config/printing.php` + variables `PRINTER_ENABLED`, `PRINTER_AUTO_PRINT`, `PRINTER_HOST`, `PRINTER_PORT`, `PRINTER_TIMEOUT` y `PRINTER_WIDTH` (42 columnas para 80 mm, 32 para 58 mm).
+- **Comanda:** al crear un pedido, el servidor imprime directo si la impresora está activa. La respuesta incluye `impresion.ok`; si falla, el POS abre la comanda en el navegador como respaldo.
+- **Ticket:** al cobrar se imprime automáticamente el ticket con subtotal, propina, total y método de pago.
+- **Panel Admin → Impresora:** estado de configuración, comprobación de conexión y prueba de impresión.
+- **Pruebas:** `tests/Feature/ImpresoraTest.php` (7 tests) cubre formato ESC/POS, impresión automática, fallo sin bloquear el pedido, respaldo por navegador y permisos.
+
+### 15. Inventario con stock y movimientos (Fase 14)
+- **URL:** `/admin/inventario` *(Admin)*
+- **Estado:** ✅ Completado
+- **Campos por producto:** `controlar_stock` (optativo), `stock` y `stock_minimo`.
+- **Ventas:** si el producto controla stock, cada pedido descuenta unidades dentro de la misma transacción. Si no hay unidades suficientes, el pedido se rechaza con un error claro y la mesa no se ocupa.
+- **Movimientos:** tabla `inventario_movimientos` con entradas, ajustes y ventas (stock anterior/nuevo, usuario, pedido y motivo).
+- **Alertas:** el dashboard avisa cuando hay productos en o bajo el mínimo; el POS y la carta ocultan los agotados.
+- **Edición:** el stock se puede fijar desde la ficha del producto o desde el módulo de inventario.
+- **Protección:** un producto con movimientos de inventario no se puede eliminar (se conserva el historial).
+- **Pruebas:** `tests/Feature/InventarioTest.php` (7 tests).
+
+### 16. Auditoría de acciones sensibles (Fase 15)
+- **URL:** `/admin/auditoria` *(Admin)*
+- **Estado:** ✅ Completado
+- **Registra:** login/logout, creación/edición/eliminación de productos, creación de pedidos, cambios de estado, cobros, entradas/ajustes de inventario y pruebas de impresora.
+- **Datos:** usuario, acción, módulo, descripción, modelo afectado, cambios en JSON, IP y user-agent. Los campos sensibles (contraseñas/tokens) se excluyen.
+- **Filtros:** módulo, acción, rango de fechas y búsqueda por descripción/IP.
+- **Pruebas:** `tests/Feature/AuditoriaTest.php` (4 tests).
+
+### 17. CI y despliegue a producción
+- **CI (integración continua):** es una verificación automática que corre en GitHub, no un servidor ni un despliegue. En cada push o pull request, `.github/workflows/ci.yml` ejecuta:
+  - `php artisan test` con PHP 8.2, 8.3 y 8.4.
+  - `vendor/bin/pint --test` (formato Laravel).
+  - `npm ci && npm run build` (compilación de assets).
+- **Producción:** [`deploy/README.md`](deploy/README.md) documenta MySQL, Nginx + HTTPS, Reverb supervisado con systemd, worker de colas, scheduler, backups y checklist de seguridad.
+- **Plantillas:** `.env.production.example`, `deploy/nginx.conf`, `deploy/cafeteria-reverb.service`, `deploy/cafeteria-queue.service`, `deploy/backup.sh` y `deploy/backup.env.example`.
+
 ---
 
 ## 🧹 Correcciones de calidad (19 oct 2026)
@@ -200,6 +251,15 @@ El cliente usa el mismo host desde el que se abrió la página cuando `REVERB_HO
 - Se eliminó la ruta `productos.show` (no existía el método en el controlador), evitando errores 500.
 - El seeder pasó a ser **idempotente** (`updateOrCreate`/`firstOrCreate`), por lo que puede ejecutarse varias veces sin duplicar datos ni fallar por emails repetidos.
 - **KDS:** se corrigió el JavaScript del tablero (faltaban comas entre métodos/getters, lo que impedía que Alpine inicializara la pantalla) y el nombre de las listas (`pedidosPendiente` → `pedidosPendientes`, `pedidosListo` → `pedidosListos`), que hacía que las columnas de **Pendientes** y **Listos** siempre aparecieran vacías.
+
+### Correcciones y mejoras (24 oct 2026)
+
+- **Categorías unificadas:** los formularios de producto usaban `cafes/pasteleria/...` mientras el POS y la carta usan `coffee/pastries/sandwiches/cold_drinks`; los productos nuevos no aparecían. Ya están alineados.
+- **Agotados:** el POS, la carta y la validación del servidor ocultan/rechazan productos con stock 0 cuando el control está activo.
+- **Errores del POS:** ahora muestran el detalle de validación del servidor (por ejemplo, "Stock insuficiente...") en lugar de un mensaje genérico.
+- **Inventario transaccional:** las ventas descuentan stock y registran el movimiento en la misma transacción del pedido.
+- **Auditoría:** los cambios de producto y pedido guardan solo los campos modificados, sin datos sensibles.
+- **Formato:** se aplicó Pint a todo el proyecto para que la verificación de CI parta en verde.
 
 ---
 
@@ -214,6 +274,13 @@ El cliente usa el mismo host desde el que se abrió la página cuando `REVERB_HO
 | `/admin/cierre-turno` | GET | Reporte Z (Fase 7) | Admin |
 | `/admin/cierre-turno/csv` | GET | Export CSV del Reporte Z (Fase 10) | Admin |
 | `/admin/productos` | Resource | CRUD de productos | Admin |
+| `/admin/inventario` | GET | Stock, alertas y movimientos (Fase 14) | Admin |
+| `/admin/inventario/{producto}/entrada` | POST | Registrar entrada de stock | Admin |
+| `/admin/inventario/{producto}/ajuste` | POST | Fijar stock exacto | Admin |
+| `/admin/auditoria` | GET | Historial de acciones sensibles (Fase 15) | Admin |
+| `/admin/impresora` | GET | Estado de la térmica de red (Fase 13) | Admin |
+| `/admin/impresora/probar` | POST | Enviar impresión de prueba | Admin |
+| `/admin/impresora/comprobar` | POST | Comprobar conexión TCP | Admin |
 | `/pos` | GET | Punto de Venta | Admin / Barista |
 | `/kds` | GET | Cocina - Comandas en vivo | Admin / Cocina |
 | `/api/pedidos` | POST | Crear pedido | Admin / Barista |
@@ -223,36 +290,48 @@ El cliente usa el mismo host desde el que se abrió la página cuando `REVERB_HO
 | `/api/pedidos/{id}/ticket` | GET | Ticket de cobro / factura | Admin / Barista |
 | `/api/pedidos/{id}/comanda` | GET | Comanda de cocina para impresión (Fase 9) | Todos los roles |
 | `/api/mesas` | GET | Listado de mesas con estado | Admin / Barista |
-| `/api/productos` | GET | Listado de productos disponibles | Admin / Barista |
+| `/api/productos` | GET | Productos disponibles (excluye agotados) | Admin / Barista |
 | `/broadcasting/auth` | POST | Autorización de canales privados (Fase 12) | Según canal |
+| `/up` | GET | Health check para monitorización | Público |
 
 ---
 
 ## 🗺️ Estado actual y próximos pasos
 
-Las fases funcionales 1 a 12 están implementadas: flujo de pedidos/cobros con controles de integridad, permisos por rol y sincronización en tiempo real entre POS y cocina. La suite actual pasa con **27 pruebas y 157 aserciones** (más una verificación E2E con Reverb real). El proyecto sigue en desarrollo: esto no equivale a una auditoría de seguridad ni a una certificación para producción.
+Las fases funcionales **1 a 15** están implementadas: pedidos/cobros con integridad, roles, tiempo real, impresión térmica de red, inventario con stock y auditoría de acciones. También hay **CI** (pruebas + Pint + build) y una guía de despliegue a producción con MySQL, Nginx, HTTPS, Reverb supervisado y backups.
 
-Orden sugerido para continuar:
+La suite local pasa con **45 pruebas y 247 aserciones** (más una verificación E2E previa con Reverb real). El proyecto sigue en desarrollo: esto no equivale a una auditoría de seguridad externa ni a una certificación para producción; antes de abrir al público hay que completar el checklist de [`deploy/README.md`](deploy/README.md).
 
-### Fase 13: Impresión física automática (red local)
-- Conectar directamente a impresoras térmicas de red (Epson/Xprinter) en lugar de depender de `window.print()` del navegador.
+### Próximos pasos sugeridos
+
+La hoja de ruta completa, con alcance, criterios de aceptación, estimaciones y decisiones abiertas, está en **[`ROADMAP.md`](ROADMAP.md)**.
+
+Orden inmediato:
+
+1. **Anulación/devolución de pedidos** con reposición de stock, liberación de mesa y registro en auditoría (hoy no existe un flujo de cancelación).
+2. **Gestión de usuarios desde el panel** (hoy los usuarios se crean por seeder/tinker), con activación/desactivación y cambio de contraseña.
+3. **Impresión por áreas**: varias impresoras (barra/cocina) y selección de ítems por estación.
+4. **Calidad y operación**: impresora real, staging MySQL, restauración de backups, E2E y observabilidad.
 
 ---
 
 ## 💡 Notas para Futuros Desarrolladores (IA / Humanos)
 
 - Para correr el proyecto usar `npm run dev --host`, `php artisan serve --host=0.0.0.0 --port=8000` y, para tiempo real, `php artisan reverb:start --host=0.0.0.0 --port=8080`.
-- Las migraciones actuales incluyen soporte para imágenes (`imagen`), métodos de pago (`metodo_pago`), propinas (`propina`) y roles (`role`).
+- Las migraciones actuales incluyen imágenes (`imagen`), métodos de pago (`metodo_pago`), propinas (`propina`), roles (`role`), stock (`controlar_stock`, `stock`, `stock_minimo`), movimientos de inventario (`inventario_movimientos`) y auditoría (`auditorias`).
 - La carpeta `storage/app/public` ya ha sido enlazada usando `storage:link`.
 - AlpineJS está integrado de manera inline en los archivos Blade (POS y KDS) para reactividad sin compilación compleja.
 - El PDF del Reporte Z usa `html2pdf.js` vía CDN, por lo que no requiere `composer require` de librerías PDF adicionales.
 - El CSV del Reporte Z (Fase 10) usa `fputcsv` nativo de PHP con BOM UTF-8, separador `;` y decimales con coma; pensado para importar directo en Excel/contabilidad.
-- La comanda de cocina (Fase 9) se imprime automáticamente al crear un pedido desde el POS; se abre en una ventana `_blank` con `width=350,height=600` optimizada para térmica de 72mm.
+- Impresión (Fase 13): `App\Services\Printing\PrinterService` envía ESC/POS por TCP; `EscPosFormatter` arma comanda/ticket y translitera a ASCII/CP850. La config vive en `config/printing.php` y `.env`. Si falla, el POS conserva `window.print()` como respaldo.
+- Inventario (Fase 14): `Producto` tiene `controlar_stock`, `stock` y `stock_minimo`; `InventarioService` registra entradas, ajustes y ventas. Los productos existentes parten **sin control de stock** para no romper datos.
+- Auditoría (Fase 15): `Auditoria::registrar(...)` se llama explícitamente en los puntos sensibles; no hay middleware genérico que registre todo el tráfico.
 - Todas las rutas operativas están protegidas por `auth` y, además, por el middleware de rol (`role:admin`, `role:admin,barista`, `role:admin,cocina`). El rol vive en `users.role` (`admin` | `barista` | `cocina`).
 - El alias `role` se registra en `bootstrap/app.php`; el middleware está en `app/Http/Middleware/EnsureUserHasRole.php`.
 - Tiempo real (Fase 12): eventos en `app/Events/`, canales en `routes/channels.php` y cliente en `resources/views/layouts/realtime.blade.php`. Se usa `ShouldBroadcastNow`, así que **no hace falta un worker de colas**; sí hace falta Reverb corriendo. `laravel-echo` y `pusher-js` se cargan por CDN.
-- Ejecutar `php artisan test` para correr toda la suite de pruebas; ejecutar `vendor/bin/pint --test` para verificar formato PHP.
+- Despliegue: `deploy/README.md` (MySQL, Nginx, HTTPS, systemd, backups). El health check de Laravel está en `/up`.
+- Ejecutar `php artisan test` para toda la suite; `vendor/bin/pint --test` para formato; `npm run build` para assets. El CI hace las tres cosas en `.github/workflows/ci.yml`.
 
 ---
 
-Última actualización: **19 de octubre de 2026**. Fase 12 (tiempo real con Reverb) completada; correcciones del KDS (JS y columnas Pendientes/Listos). Suite: 27 pruebas / 157 aserciones.
+Última actualización: **24 de octubre de 2026**. Fases 13 (impresión térmica), 14 (inventario) y 15 (auditoría) completadas; CI y guía de producción agregadas. Hoja de ruta en [`ROADMAP.md`](ROADMAP.md). Suite: **45 pruebas / 247 aserciones**.

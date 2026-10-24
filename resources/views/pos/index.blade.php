@@ -128,6 +128,7 @@
                         </div>
                         <div class="p-3 flex flex-col flex-1">
                             <p class="font-bold text-gray-800 text-sm leading-tight line-clamp-2" x-text="producto.nombre"></p>
+                            <p x-show="producto.controlar_stock" class="text-[10px] text-gray-400 font-semibold mt-1" x-text="'Stock: ' + producto.stock"></p>
                             <div class="flex items-center justify-between mt-auto pt-2">
                                 <span class="font-bold text-terracotta text-sm" x-text="formatoPrecio(producto.precio)"></span>
                                 <button class="w-8 h-8 rounded-lg bg-terracotta/10 text-terracotta flex items-center justify-center lg:group-hover:bg-terracotta lg:group-hover:text-white transition-colors">
@@ -490,22 +491,28 @@
                         })
                     });
 
+                    const data = await res.json();
+
                     if (res.ok) {
-                        alert('✅ ¡Pedido enviado a cocina correctamente!');
                         this.carrito = [];
                         this.mesaSeleccionada = null;
                         this.cartOpenMobile = false;
                         this.fetchData(); // Recargar estados de mesas
 
-                        // Imprimir comanda de cocina automáticamente
-                        const data = await res.json();
-                        if (data.pedido && data.pedido.id) {
-                            window.open(`/api/pedidos/${data.pedido.id}/comanda`, '_blank', 'width=350,height=600');
+                        if (data.impresion && data.impresion.ok) {
+                            // La comanda ya salió por la térmica de red.
+                            alert('✅ ¡Pedido enviado y comanda impresa en cocina!');
+                        } else {
+                            alert('✅ ¡Pedido enviado a cocina correctamente!');
+                            // Respaldo: si no hay impresora física, abrir la comanda en el navegador.
+                            if (data.pedido && data.pedido.id) {
+                                window.open(`/api/pedidos/${data.pedido.id}/comanda`, '_blank', 'width=350,height=600');
+                            }
                         }
                     } else {
-                        const err = await res.json();
-                        console.error(err);
-                        alert('❌ Error al enviar el pedido. Verifica los datos.');
+                        console.error(data);
+                        const detalle = data.errors ? Object.values(data.errors).flat().join(' ') : '';
+                        alert('❌ Error al enviar el pedido. ' + detalle);
                     }
                 } catch (e) {
                     console.error(e);
@@ -533,18 +540,22 @@
                         })
                     });
 
+                    const data = await res.json();
+
                     if (res.ok) {
-                        // Abrir ventana para imprimir el ticket
-                        window.open(`/api/pedidos/${this.mesaSeleccionada.pedido_id}/ticket`, '_blank', 'width=400,height=600');
-                        
+                        // Si la térmica imprimió el ticket, no abrir el respaldo del navegador.
+                        if (! (data.impresion && data.impresion.ok)) {
+                            window.open(`/api/pedidos/${this.mesaSeleccionada.pedido_id}/ticket`, '_blank', 'width=400,height=600');
+                        }
+
                         alert('✅ ¡Mesa cobrada exitosamente!');
                         this.modalCobroAbierto = false;
                         this.mesaSeleccionada = null;
                         this.fetchData(); // Recargar estados de mesas
                     } else {
-                        const err = await res.json();
-                        console.error(err);
-                        alert('❌ Error al procesar el cobro.');
+                        console.error(data);
+                        const detalle = data.errors ? Object.values(data.errors).flat().join(' ') : '';
+                        alert('❌ Error al procesar el cobro. ' + detalle);
                     }
                 } catch (e) {
                     console.error(e);
