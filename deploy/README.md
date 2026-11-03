@@ -180,6 +180,12 @@ sudo crontab -u www-data -e
 
 ## 7. Backups automáticos
 
+> **Nota — desarrollo local (SQLite):** para el entorno de desarrollo existe `php artisan backup:run`,
+> que respalda `database.sqlite` (copia en caliente vía `VACUUM INTO`), `storage/app/public` y `.env`
+> en `storage/backups/` (rotación a los últimos 7 backups; `BACKUPS_TO_KEEP` en `.env`). Corre
+> diariamente a las **03:30** vía el scheduler (`bootstrap/app.php`). El script `deploy/backup.sh`
+> documentado aquí es para **producción con MySQL**; no usar uno en lugar del otro.
+
 ```bash
 sudo mkdir -p /etc/cafeteria /var/backups/cafeteria
 sudo install -m 600 deploy/backup.env.example /etc/cafeteria/backup.env
