@@ -13,7 +13,7 @@ return new class extends Migration
             $table->foreignId('producto_id')->constrained('productos')->restrictOnDelete();
             $table->foreignId('user_id')->nullable()->constrained('users')->nullOnDelete();
             $table->foreignId('pedido_id')->nullable()->constrained('pedidos')->nullOnDelete();
-            $table->string('tipo', 20); // entrada | ajuste | venta
+            $table->string('tipo', 20); // entrada | ajuste | venta | devolucion
             $table->integer('cantidad');
             $table->integer('stock_anterior');
             $table->integer('stock_nuevo');

@@ -4,6 +4,7 @@ use App\Http\Controllers\Admin\AuditoriaController;
 use App\Http\Controllers\Admin\ImpresoraController;
 use App\Http\Controllers\Admin\InventarioController;
 use App\Http\Controllers\Admin\ProductController;
+use App\Http\Controllers\Admin\UserController;
 use App\Http\Controllers\AdminController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\CartaController;
@@ -11,9 +12,9 @@ use App\Http\Controllers\PedidoController;
 use App\Http\Controllers\PosController;
 use Illuminate\Support\Facades\Route;
 
-// Autenticación
+// Autenticación (rate limit contra fuerza bruta: 5 intentos por minuto)
 Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
-Route::post('/login', [AuthController::class, 'login']);
+Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:5,1');
 Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 
 // Redirección inicial según el rol del usuario
@@ -48,6 +49,17 @@ Route::middleware('auth')->group(function () {
         // Auditoría
         Route::get('/auditoria', [AuditoriaController::class, 'index'])->name('admin.auditoria');
 
+        // Gestión de usuarios (Fase 16)
+        Route::resource('usuarios', UserController::class)->only(['index', 'create', 'store', 'edit', 'update'])->names([
+            'index' => 'admin.usuarios.index',
+            'create' => 'admin.usuarios.create',
+            'store' => 'admin.usuarios.store',
+            'edit' => 'admin.usuarios.edit',
+            'update' => 'admin.usuarios.update',
+        ]);
+        Route::post('/usuarios/{usuario}/reset-password', [UserController::class, 'resetPassword'])->name('admin.usuarios.reset-password');
+        Route::post('/usuarios/{usuario}/toggle', [UserController::class, 'toggle'])->name('admin.usuarios.toggle');
+
         // Impresora térmica de red (Fase 13)
         Route::get('/impresora', [ImpresoraController::class, 'index'])->name('admin.impresora');
         Route::post('/impresora/probar', [ImpresoraController::class, 'probar'])->name('admin.impresora.probar');
@@ -65,6 +77,7 @@ Route::middleware('auth')->group(function () {
         // Pedidos
         Route::post('/api/pedidos', [PedidoController::class, 'store']);
         Route::post('/api/pedidos/{pedido}/pagar', [PedidoController::class, 'pagar']);
+        Route::post('/api/pedidos/{pedido}/anular', [PedidoController::class, 'anular']);
         Route::get('/api/pedidos/{pedido}/ticket', [PedidoController::class, 'ticket'])->name('pedidos.ticket');
 
         // Datos del POS

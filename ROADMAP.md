@@ -1,7 +1,7 @@
 # Hoja de ruta - Café Rosé
 
-> Última actualización: **24 de octubre de 2026**.
-> Estado de partida: fases 1 a 15 completas, suite en **45 pruebas / 247 aserciones**, CI configurado y guía de producción lista.
+> Última actualización: **3 de noviembre de 2026**.
+> Estado de partida: fases 1 a 15 completas + **Prioridad 1 (anulación)** y **Prioridad 2 (gestión de usuarios)** + quick win de login (rate limiting y auditoría de intentos fallidos); suite en **65 pruebas / 324 aserciones**, CI configurado y guía de producción lista.
 
 Esta hoja de ruta prioriza el trabajo de la **próxima sesión** y deja un backlog ordenado para las siguientes. La idea es cerrar primero lo que más impacta en la operación diaria del local, sin abrir frentes nuevos antes de estabilizar lo que ya existe.
 
@@ -31,7 +31,7 @@ Antes de escribir código, confirmar:
 
 ---
 
-## 2. Prioridad 1: anulación y devolución de pedidos
+## 2. Prioridad 1: anulación y devolución de pedidos ✅ COMPLETADA (3 nov 2026)
 
 **Problema:** hoy, si un pedido se carga mal, no hay forma de anularlo. El pedido queda activo, la mesa ocupada y el stock descontado. Es el hueco operativo más importante.
 
@@ -55,21 +55,23 @@ Antes de escribir código, confirmar:
 - `resources/views/pos/index.blade.php`
 - `tests/Feature/AnulacionPedidoTest.php` (nuevo)
 
-**Criterios de aceptación:**
+**Criterios de aceptación (todos verificados por `tests/Feature/AnulacionPedidoTest.php`, 9 pruebas):**
 
-- [ ] Anular un pedido repone exactamente las cantidades vendidas.
-- [ ] Se crea un movimiento de inventario por producto con stock anterior/nuevo correcto.
-- [ ] La mesa queda `disponible` solo si no tiene otros pedidos activos.
-- [ ] No se puede anular dos veces el mismo pedido.
-- [ ] Un barista no puede anular pedidos de otra mesa sin permiso (la ruta ya exige rol).
-- [ ] Queda registro en `/admin/auditoria` con el motivo.
-- [ ] Pruebas nuevas en verde y Pint sin cambios pendientes.
+- [x] Anular un pedido repone exactamente las cantidades vendidas.
+- [x] Se crea un movimiento de inventario por producto con stock anterior/nuevo correcto (`tipo=devolucion`).
+- [x] La mesa queda `disponible` solo si no tiene otros pedidos activos.
+- [x] No se puede anular dos veces el mismo pedido.
+- [x] Un barista no puede anular pedidos sin permiso (la ruta exige rol `admin|barista`).
+- [x] Queda registro en `/admin/auditoria` con el motivo.
+- [x] Pruebas nuevas en verde (65 pruebas / 324 aserciones) y Pint sin cambios pendientes.
 
-**Estimación:** 2 a 3 horas.
+**Implementación:** `POST /api/pedidos/{pedido}/anular` (role:admin,barista), nuevo estado terminal `anulado` a través de migración de reconstrucción de constraint (SQLite/MySQL/PostgreSQL), servicio `InventarioService::registrarDevolucion()`, botón **Anular Pedido** en el POS y auditoría `anular/pedidos`.
+
+**Estimación original:** 2 a 3 horas.
 
 ---
 
-## 3. Prioridad 2: gestión de usuarios desde el panel
+## 3. Prioridad 2: gestión de usuarios desde el panel ✅ COMPLETADA (3 nov 2026)
 
 **Problema:** los usuarios se crean por seeder o `tinker`. Cambiar una clave o dar de baja a un barista requiere acceso al servidor.
 
@@ -93,15 +95,17 @@ Antes de escribir código, confirmar:
 - `database/migrations/…_add_activo_to_users_table.php` (nuevo)
 - `tests/Feature/UserManagementTest.php` (nuevo)
 
-**Criterios de aceptación:**
+**Criterios de aceptación (verificados por `tests/Feature/UserManagementTest.php`, 11 pruebas):**
 
-- [ ] Un admin puede crear un barista y ese barista puede iniciar sesión.
-- [ ] Un usuario desactivado no puede iniciar sesión.
-- [ ] No se puede dejar el sistema sin ningún admin activo.
-- [ ] Las contraseñas nunca se guardan en auditoría ni se muestran en pantalla.
-- [ ] Un barista recibe 403 en todas las rutas de usuarios.
+- [x] Un admin puede crear un barista y ese barista puede iniciar sesión.
+- [x] Un usuario desactivado no puede iniciar sesión (y su cuenta no se elimina).
+- [x] No se puede dejar el sistema sin ningún admin activo (protección de último admin + auto-edición bloqueada).
+- [x] Las contraseñas nunca se guardan en auditoría ni se muestran en pantalla.
+- [x] Un barista recibe 403 en todas las rutas de usuarios.
 
-**Estimación:** 2 horas.
+**Implementación:** CRUD `/admin/usuarios` (solo admin), campo `activo` en `users` (migración `2026_11_03_000002`), reset de contraseña sin mostrar la anterior, activar/desactivar sin borrar cuentas, auditoría `crear/editar/resetear_password/activar/desactivar` en módulo `usuarios` sin contraseñas. Plus quick win: **rate limiting** en `POST /login` (5 intentos/minuto, `throttle:5,1`) y **auditoría de intentos fallidos** (`login_fallido`, sin guardar contraseñas).
+
+**Estimación original:** 2 horas.
 
 ---
 
@@ -132,17 +136,17 @@ Antes de escribir código, confirmar:
 | Restauración de backup probada | Un backup sin restore probado no sirve | 1 h |
 | Pruebas E2E de navegador (Playwright) | Cubrir POS, KDS y carta en móvil | 4 a 6 h |
 | Observabilidad | Alertas de `/up`, Reverb, backups y disco | 2 a 3 h |
-| Rate limiting en login | Frenar fuerza bruta | 30 min |
-| Auditoría de logins fallidos | Hoy solo se registra el login exitoso | 30 min |
+| ~~Rate limiting en login~~ | ✅ 3 nov 2026: `throttle:5,1` en `POST /login` | hecho |
+| ~~Auditoría de logins fallidos~~ | ✅ 3 nov 2026: evento `login_fallido` auditado (sin contraseñas) | hecho |
 
 ---
 
 ## 6. Backlog ordenado
 
-1. **Anulación/devolución de pedidos** (P1, mañana).
-2. **Gestión de usuarios y claves** (P2).
+1. ~~**Anulación/devolución de pedidos**~~ ✅ 3 nov 2026 (P1).
+2. ~~**Gestión de usuarios y claves**~~ ✅ 3 nov 2026 (P2).
 3. **Impresión por áreas** (P3).
-4. **Login: rate limiting + auditoría de intentos fallidos** (quick win).
+4. ~~**Login: rate limiting + auditoría de intentos fallidos**~~ ✅ 3 nov 2026 (quick win).
 5. **Staging MySQL + restore de backup** (antes de producción).
 6. **E2E Playwright** (POS, KDS, carta móvil).
 7. **Observabilidad y alertas**.
@@ -152,12 +156,12 @@ Antes de escribir código, confirmar:
 
 ---
 
-## 7. Decisiones abiertas
+## 7. Decisiones abiertas y resueltas
 
-- **¿Se puede anular un pedido ya pagado?** Propuesta para mañana: **no**; solo pedidos activos. Una devolución de dinero implica un flujo contable/Reporte Z que merece su propia fase.
-- **¿Quién puede anular?** Propuesta: admin y barista, con motivo obligatorio. Si el local quiere restringirlo, dejarlo solo en admin.
+- ~~**¿Se puede anular un pedido ya pagado?**~~ ✅ Resuelta (3 nov 2026): **no**; solo pedidos activos (pendiente/preparando/listo/entregado). Una devolución de dinero implica un flujo contable/Reporte Z que merece su propia fase.
+- ~~**¿Quién puede anular?**~~ ✅ Resuelta (3 nov 2026): admin y barista, con motivo obligatorio (mín. 5 caracteres).
 - **¿Varias impresoras por categoría o por ítem?** Propuesta: por categoría; es más simple y cubre barra/cocina.
-- **¿Los usuarios se eliminan o se desactivan?** Propuesta: desactivar, para no romper pedidos históricos ni auditoría.
+- ~~**¿Los usuarios se eliminan o se desactivan?**~~ ✅ Resuelta (3 nov 2026): desactivar, para no romper pedidos históricos ni auditoría.
 - **¿Dónde vive la configuración de impresoras?** Propuesta: base de datos si se implementa multi-impresora.
 
 ---
@@ -179,7 +183,6 @@ Una tarea se considera cerrada solo si:
 
 ## 9. Métricas de referencia
 
-- Suite actual: **45 pruebas / 247 aserciones**.
-- Cobertura funcional: pedidos, cobros, roles, KDS, tiempo real, Reporte Z, inventario, auditoría e impresión.
-- Objetivo de la próxima sesión: **+8 a +12 pruebas** (anulación y usuarios).
+- Suite actual: **65 pruebas / 324 aserciones** (+9 de anulación, +11 de gestión de usuarios sobre las 45 previas).
+- Cobertura funcional: pedidos, cobros, anulaciones, roles, KDS, tiempo real, Reporte Z, inventario, auditoría, impresión y gestión de usuarios.
 - Objetivo de estabilización: CI verde en cada push y backups restaurables.

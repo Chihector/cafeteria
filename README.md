@@ -280,6 +280,33 @@ El cliente usa el mismo host desde el que se abrió la página cuando `REVERB_HO
 
 ---
 
+### 22. Anulación y devolución de pedidos (Fase 16, 3 nov 2026)
+- **Endpoint:** `POST /api/pedidos/{pedido}/anular` *(Admin / Barista)*
+- **Estado:** ✅ Completado
+- **Motivo obligatorio** (mínimo 5 caracteres), registrado en `auditorias` (acción `anular`) con usuario, IP y cambios.
+- **Solo pedidos activos** (`pendiente`, `preparando`, `listo`, `entregado`); un pedido pagado o ya anulado devuelve **422**.
+- **Reposición de stock**: si el producto controla stock, se devuelve al inventario con un movimiento de tipo `devolucion` (visible en el historial de inventario), vía `InventarioService::registrarDevolucion()` en la misma transacción que la anulación.
+- **La mesa se libera solo si no quedan otros pedidos activos** en ella; si queda alguno, sigue ocupada.
+- **Nuevo estado terminal `anulado`**: se amplió el `CHECK` de `pedidos.estado` mediante una migración que reconstruye la tabla de forma atómica en SQLite (`PRAGMA foreign_keys=OFF`, copia tabla → drop → rename + recreación de índices); MySQL/PostgreSQL usan `ALTER` nativo.
+- **KDS y POS se sincronizan**: se emite `pedido.actualizado`; la comanda anulada desaparece de la cocina automáticamente (el listado solo devuelve estados activos).
+- **POS**: botón **Anular Pedido** bajo "Cobrar Mesa", con modal y confirmación; pide el motivo al usuario.
+- **Pruebas:** `tests/Feature/AnulacionPedidoTest.php` (9 tests): reposición exacta de stock, liberación condicional de mesa, idempotencia, auditoría, motivo obligatorio, roles y KDS.
+
+### 23. Gestión de usuarios desde el panel y login robusto (Fase 17, 3 nov 2026)
+- **URL:** `/admin/usuarios` *(solo Admin)*
+- **Estado:** ✅ Completado
+- **Ciclo completo**: crear cuenta (nombre, email, rol, contraseña inicial mín. 8 caracteres), editar nombre/email/rol, **restablecer contraseña** sin ver la anterior, **activar/desactivar** sin borrar (se conserva el historial de pedidos y auditoría).
+- **Salvaguardas**: nadie puede desactivarse ni cambiar su propio rol; el **último administrador activo** no puede ser degradado ni desactivado.
+- **Login blindado** (quick win de la hoja de ruta):
+  - `throttle:5,1` en `POST /login` (máx. 5 intentos por minuto por IP, respuesta 429).
+  - **Auditoría de intentos fallidos** (`login_fallido`) y de rechazos por cuenta desactivada — sin guardar contraseñas.
+  - Un usuario desactivado **no puede iniciar sesión**.
+  - Las contraseñas nunca aparecen en auditoría ni en pantalla.
+- **Sidebar**: nuevo acceso "Usuarios" en el panel Admin.
+- **Pruebas:** `tests/Feature/UserManagementTest.php` (11 tests): creación, login, desactivación/reactivación, protección de auto-edición y último admin, reset con 8+ caracteres, auditoría sin contraseñas, 403 para barista y render de las páginas.
+
+---
+
 ## 🧹 Correcciones de calidad (19 oct 2026)
 
 - El dashboard ahora cuenta como **ventas solo pedidos `pagado`**, igual que el Reporte Z (antes sumaba `listo`/`entregado` sin cobrar).
@@ -310,6 +337,7 @@ El cliente usa el mismo host desde el que se abrió la página cuando `REVERB_HO
 | `/admin/cierre-turno` | GET | Reporte Z (Fase 7) | Admin |
 | `/admin/cierre-turno/csv` | GET | Export CSV del Reporte Z (Fase 10) | Admin |
 | `/admin/productos` | Resource | CRUD de productos | Admin |
+| `/admin/usuarios` | Resource | CRUD de usuarios y activación (Fase 17) | Admin |
 | `/admin/inventario` | GET | Stock, alertas y movimientos (Fase 14) | Admin |
 | `/admin/inventario/{producto}/entrada` | POST | Registrar entrada de stock | Admin |
 | `/admin/inventario/{producto}/ajuste` | POST | Fijar stock exacto | Admin |
@@ -322,6 +350,7 @@ El cliente usa el mismo host desde el que se abrió la página cuando `REVERB_HO
 | `/api/pedidos` | POST | Crear pedido | Admin / Barista |
 | `/api/kds/pedidos` | GET | Listado paginado para cocina | Admin / Cocina |
 | `/api/kds/pedidos/{id}/estado` | PATCH | Cambiar estado de comanda | Admin / Cocina |
+| `/api/pedidos/{id}/anular` | POST | Anular pedido activo y reponer stock (Fase 16) | Admin / Barista |
 | `/api/pedidos/{id}/pagar` | POST | Cobrar pedido y liberar mesa | Admin / Barista |
 | `/api/pedidos/{id}/ticket` | GET | Ticket de cobro / factura | Admin / Barista |
 | `/api/pedidos/{id}/comanda` | GET | Comanda de cocina para impresión (Fase 9) | Todos los roles |
@@ -334,7 +363,7 @@ El cliente usa el mismo host desde el que se abrió la página cuando `REVERB_HO
 
 ## 🗺️ Estado actual y próximos pasos
 
-Las fases funcionales **1 a 15** están implementadas: pedidos/cobros con integridad, roles, tiempo real, impresión térmica de red, inventario con stock y auditoría de acciones. También hay **CI** (pruebas + Pint + build), una guía de despliegue a producción con MySQL, Nginx, HTTPS, Reverb supervisado y backups, y las **mejoras operativas del 2 nov 2026**: optimización de consultas (fix N+1, inserts en lote, índices `pedidos.estado`/`created_at`), **backup automático diario** (03:30, rotación ×7), logs diarios con contexto de error y **documentación completa de la API** (`docs/API.md`, `docs/openapi.yaml`). La suite local pasa con **45 pruebas y 247 aserciones** (más una verificación E2E previa con Reverb real). El proyecto sigue en desarrollo: esto no equivale a una auditoría de seguridad externa ni a una certificación para producción; antes de abrir al público hay que completar el checklist de [`deploy/README.md`](deploy/README.md).
+Las fases funcionales **1 a 17** están implementadas: pedidos/cobros con integridad, roles, tiempo real, impresión térmica de red, inventario con stock, auditoría de acciones, **anulación con devolución de stock** (con el nuevo estado terminal `anulado`, tanto en SQLite como MySQL/PostgreSQL) y **gestión de usuarios desde el panel** con login robusto (rate limiting + auditoría de intentos fallidos). También hay **CI** (pruebas + Pint + build), una guía de despliegue a producción con MySQL, Nginx, HTTPS, Reverb supervisado y backups, y las **mejoras operativas del 2 nov 2026**: optimización de consultas (fix N+1, inserts en lote, índices `pedidos.estado`/`created_at`), **backup automático diario** (03:30, rotación ×7), logs diarios con contexto de error y **documentación completa de la API** (`docs/API.md`, `docs/openapi.yaml`). La suite local pasa con **65 pruebas y 324 aserciones** (más una verificación E2E previa con Reverb real). El proyecto sigue en desarrollo: esto no equivale a una auditoría de seguridad externa ni a una certificación para producción; antes de abrir al público hay que completar el checklist de [`deploy/README.md`](deploy/README.md).
 
 ### Próximos pasos sugeridos
 
@@ -342,8 +371,8 @@ La hoja de ruta completa, con alcance, criterios de aceptación, estimaciones y 
 
 Orden inmediato:
 
-1. **Anulación/devolución de pedidos** con reposición de stock, liberación de mesa y registro en auditoría (hoy no existe un flujo de cancelación).
-2. **Gestión de usuarios desde el panel** (hoy los usuarios se crean por seeder/tinker), con activación/desactivación y cambio de contraseña.
+1. ~~**Anulación/devolución de pedidos**~~ ✅ 3 nov 2026 (Fase 16).
+2. ~~**Gestión de usuarios desde el panel**~~ ✅ 3 nov 2026 (Fase 17).
 3. **Impresión por áreas**: varias impresoras (barra/cocina) y selección de ítems por estación.
 4. **Calidad y operación**: impresora real, staging MySQL, restauración de backups, E2E y observabilidad.
 
@@ -360,6 +389,8 @@ Orden inmediato:
 - Impresión (Fase 13): `App\Services\Printing\PrinterService` envía ESC/POS por TCP; `EscPosFormatter` arma comanda/ticket y translitera a ASCII/CP850. La config vive en `config/printing.php` y `.env`. Si falla, el POS conserva `window.print()` como respaldo.
 - Inventario (Fase 14): `Producto` tiene `controlar_stock`, `stock` y `stock_minimo`; `InventarioService` registra entradas, ajustes y ventas. Los productos existentes parten **sin control de stock** para no romper datos.
 - Auditoría (Fase 15): `Auditoria::registrar(...)` se llama explícitamente en los puntos sensibles; no hay middleware genérico que registre todo el tráfico.
+- Anulación (Fase 16): nuevo estado terminal `anulado` en `pedidos.estado` (migración `2026_11_03_000001_add_anulado_to_pedidos_estado`, reconstruye la tabla en SQLite de forma atómica). Repone stock con movimientos `devolucion` y libera la mesa solo si no queda otro pedido activo. Solo admin/barista con motivo ≥ 5 caracteres.
+- Usuarios (Fase 17): `users.activo` (migración `2026_11_03_000002`); un desactivado no puede iniciar sesión; nadie puede desactivarse ni cambiar su propio rol; el último admin activo está protegido. `POST /login` tiene `throttle:5,1` y los fallos se auditan como `login_fallido` (sin contraseñas).
 - Todas las rutas operativas están protegidas por `auth` y, además, por el middleware de rol (`role:admin`, `role:admin,barista`, `role:admin,cocina`). El rol vive en `users.role` (`admin` | `barista` | `cocina`).
 - El alias `role` se registra en `bootstrap/app.php`; el middleware está en `app/Http/Middleware/EnsureUserHasRole.php`.
 - Tiempo real (Fase 12): eventos en `app/Events/`, canales en `routes/channels.php` y cliente en `resources/views/layouts/realtime.blade.php`. Se usa `ShouldBroadcastNow`, así que **no hace falta un worker de colas**; sí hace falta Reverb corriendo. `laravel-echo` y `pusher-js` se cargan por CDN.
@@ -371,4 +402,4 @@ Orden inmediato:
 
 ---
 
-Última actualización: **2 de noviembre de 2026**. Fases 13 (impresión térmica), 14 (inventario) y 15 (auditoría) completadas; CI y guía de producción. Se añaden mejoras operativas y de rendimiento (fix N+1, inserts en lote, índices, backup automático, logs diarios, API documentada). Hoja de ruta en [`ROADMAP.md`](ROADMAP.md). Suite: **45 pruebas / 247 aserciones**.
+Última actualización: **3 de noviembre de 2026**. Fases 16 (anulación con devolución de stock) y 17 (gestión de usuarios desde el panel + login con rate limiting y auditoría de fallos) completadas; ROADMAP actualizado con P1 y P2 resueltas. Suite: **65 pruebas / 324 aserciones**. Próxima prioridad: **impresión por áreas** (`ROADMAP.md`).

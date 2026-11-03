@@ -18,6 +18,8 @@ tags:
     description: Rutas públicas
   - name: admin
     description: Panel de administración (role:admin)
+  - name: usuarios
+    description: Gestión de usuarios (role:admin)
   - name: pos
     description: Punto de venta (role:admin,barista)
   - name: kds
@@ -29,7 +31,10 @@ paths:
     post:
       tags: [auth]
       summary: Iniciar sesión
-      description: Redirige (302) al módulo según rol; en fallo vuelve con error de credenciales.
+      description: >
+        Redirige (302) al módulo según rol; en fallo vuelve con error de credenciales.
+        Rate limit de 5 intentos por minuto por IP (429 al superarlo). Los intentos fallidos
+        se auditan como `login_fallido`. Una cuenta desactivada (`activo=false`) no puede iniciar sesión.
       requestBody:
         required: true
         content:
@@ -48,6 +53,8 @@ paths:
       responses:
         "302":
           description: Redirección a /admin, /pos o /kds según rol, o vuelta a /login con error
+        "429":
+          description: Demasiados intentos; espere un minuto y reintente
   /logout:
     post:
       tags: [auth]
@@ -186,6 +193,99 @@ paths:
           description: Redirección a la tabla
         "403":
           $ref: "#/components/responses/Forbidden"
+  /admin/usuarios:
+    get:
+      tags: [usuarios]
+      summary: Listar usuarios (HTML)
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Tabla de cuentas con rol, estado y acciones
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    post:
+      tags: [usuarios]
+      summary: Crear usuario
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: "#/components/schemas/UsuarioInput"
+      responses:
+        "302":
+          description: Redirección a /admin/usuarios
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /admin/usuarios/{usuario}:
+    put:
+      tags: [usuarios]
+      summary: Actualizar usuario
+      description: Nadie puede cambiar su propio rol ni degradar al último admin activo.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/usuarioId"
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: "#/components/schemas/UsuarioInput"
+      responses:
+        "302":
+          description: Redirección a /admin/usuarios
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /admin/usuarios/{usuario}/reset-password:
+    post:
+      tags: [usuarios]
+      summary: Restablecer contraseña
+      description: Genera una contraseña nueva sin mostrar la anterior; queda auditada.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/usuarioId"
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [password, password_confirmation]
+              properties:
+                password:
+                  type: string
+                  minLength: 8
+                password_confirmation:
+                  type: string
+      responses:
+        "302":
+          description: Redirección a /admin/usuarios
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /admin/usuarios/{usuario}/toggle:
+    post:
+      tags: [usuarios]
+      summary: Activar / desactivar cuenta
+      description: Una cuenta desactivada no puede iniciar sesión. Nadie puede desactivarse a sí mismo ni al último admin activo.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/usuarioId"
+      responses:
+        "302":
+          description: Redirección a /admin/usuarios
+        "403":
+          $ref: "#/components/responses/Forbidden"
   /pos:
     get:
       tags: [pos]
@@ -312,6 +412,57 @@ paths:
           $ref: "#/components/responses/Forbidden"
         "422":
           $ref: "#/components/responses/ValidationError"
+  /api/pedidos/{pedido}/anular:
+    post:
+      tags: [pos]
+      summary: Anular pedido y devolver stock (Fase 16)
+      description: >
+        Solo pedidos activos (pendiente/preparando/listo/entregado); un pedido pagado o ya anulado
+        devuelve 422. Repone el stock de los productos con control de inventario (movimiento
+        `devolucion`), marca el pedido como `anulado` y libera la mesa solo si no quedan otros
+        pedidos activos. Emite pedido.actualizado y registra auditoría (acción `anular`).
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/pedidoId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [motivo]
+              properties:
+                motivo:
+                  type: string
+                  minLength: 5
+                  maxLength: 500
+      responses:
+        "200":
+          description: Pedido anulado y stock repuesto
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  pedido_id:
+                    type: integer
+                  estado:
+                    type: string
+                    enum: [anulado]
+                  mesa_estado:
+                    type: string
+                    enum: [disponible, ocupada]
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          description: Pedido no activo / motivo inválido
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorBody"
   /api/pedidos/{pedido}/ticket:
     get:
       tags: [pos]
@@ -454,6 +605,12 @@ components:
       required: true
       schema:
         type: integer
+    usuarioId:
+      name: usuario
+      in: path
+      required: true
+      schema:
+        type: integer
   responses:
     Forbidden:
       description: Autenticado pero sin el rol requerido (403)
@@ -539,6 +696,22 @@ components:
           type: array
           items:
             type: string
+    UsuarioInput:
+      type: object
+      required: [name, email, role]
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+          enum: [admin, barista, cocina]
+        password:
+          type: string
+          minLength: 8
+          description: Requerida solo al crear; confirmación con `password_confirmation`
     ItemPedidoInput:
       type: object
       required: [producto_id, cantidad]
@@ -563,7 +736,7 @@ components:
           nullable: true
         estado:
           type: string
-          enum: [pendiente, preparando, listo, entregado, pagado]
+          enum: [pendiente, preparando, listo, entregado, pagado, anulado]
         total:
           type: number
         observaciones:

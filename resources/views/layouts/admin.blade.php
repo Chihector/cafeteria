@@ -54,6 +54,10 @@
                 <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4H7v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
                 Impresora
             </a>
+            <a href="{{ route('admin.usuarios.index') }}" class="flex items-center gap-3 {{ request()->is('admin/usuarios*') ? 'bg-terracotta/10 text-terracotta' : 'text-white/60 hover:text-white hover:bg-white/5' }} px-4 py-3 rounded-xl font-medium transition-colors">
+                <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2m14-10a3 3 0 11-6 0 3 3 0 016 0M20 21v-1a3 3 0 00-2-2.8m-3.5-4.2a3 3 0 010 5.2" /></svg>
+                Usuarios
+            </a>
         </div>
         
         <div class="p-6 border-t border-white/5 flex flex-col gap-4">

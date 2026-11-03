@@ -45,6 +45,8 @@ La autorización adicional se aplica con el middleware de rol (`role:`); ver
 
 **Respuesta exitosa**: **302** → `/admin` (admin), `/pos` (barista), `/kds` (cocina).
 **Fallo**: **302** de vuelta con error `email` (credenciales no coinciden).
+**Rate limiting**: `POST /login` admite **5 intentos por minuto** por IP; al superarlo responde **429**. Los intentos fallidos quedan auditados como `login_fallido` (sin guardar la contraseña).
+**Cuenta desactivada**: un usuario con `users.activo = false` no puede iniciar sesión; recibe un mensaje indicando que contacte al administrador.
 
 ## Roles y permisos
 
@@ -56,7 +58,7 @@ La autorización adicional se aplica con el middleware de rol (`role:`); ver
 
 | Módulo / Recurso | admin | barista | cocina |
 |---|:---:|:---:|:---:|
-| `/admin/*`, `/admin/cierre-turno*`, productos | ✅ | ❌ | ❌ |
+| `/admin/*`, `/admin/cierre-turno*`, productos, usuarios, inventario, auditoría, impresora | ✅ | ❌ | ❌ |
 | `/pos`, `/api/pedidos*`, `/api/mesas`, `/api/productos`, ticket | ✅ | ✅ | ❌ |
 | `/kds`, `/api/kds/pedidos*` | ✅ | ❌ | ✅ |
 | `/api/pedidos/{id}/comanda` | ✅ | ✅ | ✅ |
@@ -123,6 +125,28 @@ archivo `reporte-z-{periodo}-{YYYYMMDD}.csv` con:
 - Secciones: cabecera, resumen, desglose por método, detalle con fecha/hora/mesa/barista.
 - **Solo pedidos pagados** (igual que el Reporte Z).
 
+### `GET /admin/usuarios` — Gestión de usuarios (Fase 17)
+
+CRUD de cuentas para el administrador, con protección de seguridad:
+
+| Método | Ruta | Descripción |
+|---|---|---|
+| GET | `/admin/usuarios` | Lista de usuarios (rol, estado, última gestión) |
+| GET | `/admin/usuarios/create` | Formulario de creación |
+| POST | `/admin/usuarios` | Crear cuenta (nombre, email, rol, contraseña ≥ 8) |
+| GET | `/admin/usuarios/{usuario}/edit` | Formulario de edición (datos + reset de contraseña + activar/desactivar) |
+| PUT/PATCH | `/admin/usuarios/{usuario}` | Actualizar nombre/email/rol |
+| POST | `/admin/usuarios/{usuario}/reset-password` | Restablecer contraseña sin ver la anterior |
+| POST | `/admin/usuarios/{usuario}/toggle` | Activar / desactivar la cuenta |
+
+**Reglas de seguridad**
+
+- Un usuario **desactivado** no puede iniciar sesión.
+- Nadie puede **desactivarse a sí mismo** ni **cambiar su propio rol**.
+- El **último administrador activo** no puede ser degradado ni desactivado.
+- Las contraseñas **nunca** se registran en auditoría ni se muestran en pantalla.
+- Crear, editar, restablecer, activar y desactivar quedan registrados en `auditorias` (módulo `usuarios`).
+
 ## Punto de Venta (role:admin,barista)
 
 ### `GET /pos` — Interfaz POS
@@ -175,7 +199,25 @@ Todos los productos con `disponible=true` (incluye `precio`, `alergenos`, etc.).
   pedidos activos (si no, la mesa sigue `ocupada`).
 - Emite `PedidoActualizado` (KDS quita la comanda; POS libera la mesa).
 
-**Respuesta** **200**: `{ message, pedido }`.
+**Respuesta** **200**: `{ message, pedido, impresion }`.
+
+### `POST /api/pedidos/{pedido}/anular` — Anular pedido y devolver stock (Fase 16)
+
+**Body JSON**
+
+| Campo | Tipo | Reglas |
+|---|---|---|
+| `motivo` | string | requerido, mínimo 5 caracteres, máximo 500 |
+
+**Comportamiento transaccional**
+
+- Solo anula pedidos **activos** (`pendiente`, `preparando`, `listo`, `entregado`); un pedido `pagado` o ya `anulado` devuelve **422**.
+- **Repone el stock** de los productos con control de inventario: cada línea genera un movimiento de tipo `devolucion` (vía `InventarioService::registrarDevolucion`) dentro de la misma transacción, con `stock_anterior`/`stock_nuevo` registrados.
+- Marca el pedido como `anulado` (nuevo estado terminal).
+- **Libera la mesa solo si no quedan otros pedidos activos** en ella.
+- Emite `pedido.actualizado` (el KDS quita la comanda y el POS libera la mesa) y registra **auditoría** (`anular`, módulo `pedidos`) con el motivo.
+
+**Respuesta** **200**: `{ message, pedido_id, estado: "anulado", mesa_estado }`.
 
 ### `GET /api/pedidos/{pedido}/ticket` — Ticket de cobro
 
@@ -232,11 +274,13 @@ Si el WebSocket no está disponible, ambas vistas hacen **auto-refresco cada 12 
 
 | Tabla | Columnas clave |
 |---|---|
-| `users` | id, name, email unique, password (hash), role (`admin`\|`barista`\|`cocina`) |
+| `users` | id, name, email unique, password (hash), role (`admin`\|`barista`\|`cocina`), activo (bool, default `true`) |
 | `mesas` | id, numero unique, capacidad, estado (`disponible`\|`ocupada`\|`reservada`) |
-| `productos` | id, nombre, precio decimal(10,2), categoria, disponible, vegetariano, destacado, imagen, alergenos JSON |
-| `pedidos` | id, mesa_id FK, user_id FK→users nullOnDelete, estado enum (5), total decimal(10,2), observaciones text, metodo_pago, propina decimal(10,2) |
+| `productos` | id, nombre, precio decimal(10,2), categoria, disponible, vegetariano, destacado, imagen, alergenos JSON, controlar_stock, stock, stock_minimo |
+| `pedidos` | id, mesa_id FK, user_id FK→users nullOnDelete, estado enum (6: `pendiente`,`preparando`,`listo`,`entregado`,`pagado`,`anulado`), total decimal(10,2), observaciones text, metodo_pago, propina decimal(10,2) |
 | `detalle_pedidos` | id, pedido_id FK→pedidos (cascade), producto_id FK→productos (cascade), cantidad int, precio_unitario decimal(10,2), notas_especiales text |
+| `inventario_movimientos` | id, producto_id FK→productos (restrictOnDelete), user_id FK nullable, pedido_id FK nullable, tipo (`entrada`\|`ajuste`\|`venta`\|`devolucion`), cantidad, stock_anterior, stock_nuevo, motivo |
+| `auditorias` | id, user_id FK nullable, accion, modulo, descripcion, modelo_type/modelo_id (polimórfico), cambios JSON (sin contraseñas), ip, user_agent |
 | `cache`, `jobs`, `sessions` | infraestructura Laravel (sqlite) |
 
 Índices: `pedidos.estado` y `pedidos.created_at` (añadidos por índice de rendimiento en la misma versión).

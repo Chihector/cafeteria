@@ -213,10 +213,15 @@
                         <span class="text-gray-500 font-medium">Cuenta Mesa</span>
                         <span class="font-black text-2xl text-terracotta" x-text="formatoPrecio(mesaSeleccionada.total || 0)"></span>
                     </div>
-                    <button @click="abrirCobro()" 
+                    <button @click="abrirCobro()"
                         class="w-full bg-green-500 text-white font-bold py-4 rounded-2xl hover:bg-green-600 transition-all shadow-lg shadow-green-500/30 active:scale-95 flex items-center justify-center gap-2 text-lg">
                         <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
                         Cobrar Mesa
+                    </button>
+                    <button @click="abrirAnularModal()"
+                        class="w-full mt-3 bg-white text-red-600 border border-red-200 font-bold py-3 rounded-2xl hover:bg-red-50 transition-all flex items-center justify-center gap-2 text-sm">
+                        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                        Anular Pedido
                     </button>
                 </div>
             </template>
@@ -322,6 +327,31 @@
             </div>
         </div>
     </div>
+
+    <!-- Modal Anular Pedido -->
+    <div x-show="modalAnularAbierto" class="fixed inset-0 z-50 flex items-center justify-center px-4" style="display: none;">
+        <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" @click="modalAnularAbierto = false"></div>
+        <div class="bg-white rounded-3xl shadow-2xl w-full max-w-sm relative z-10 overflow-hidden flex flex-col">
+            <div class="bg-red-50 px-6 py-4 border-b border-red-100 flex justify-between items-center">
+                <h3 class="font-black text-lg text-red-700">Anular Pedido <span x-text="mesaSeleccionada?.numero"></span></h3>
+                <button @click="modalAnularAbierto = false" class="text-red-400 hover:text-red-600">
+                    <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+            </div>
+            <div class="p-6">
+                <div class="flex items-start gap-3 p-3 bg-red-50 border border-red-100 rounded-xl mb-4">
+                    <svg class="w-5 h-5 text-red-500 mt-0.5 flex-none" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                    <p class="text-xs text-red-800 leading-snug">Se repondrá el stock de los productos, la mesa quedará libre y la acción quedará registrada en auditoría. <strong>No se puede anular un pedido ya pagado.</strong></p>
+                </div>
+                <label class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2 block">Motivo (obligatorio)</label>
+                <textarea x-model="motivoAnulacion" rows="2" placeholder="Ej: Cliente se retiró sin ordenar" class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-red-200 focus:border-red-400 mb-4 resize-none"></textarea>
+                <button @click="confirmarAnulacion()" :disabled="loading || motivoAnulacion.trim().length < 5" class="w-full bg-red-600 text-white font-bold py-4 rounded-xl hover:bg-red-700 transition-all flex items-center justify-center gap-2 text-lg active:scale-95 disabled:opacity-50">
+                    <span x-show="!loading">Confirmar Anulación</span>
+                    <span x-show="loading">Anulando...</span>
+                </button>
+            </div>
+        </div>
+    </div>
 </div>
 
 <script>
@@ -346,6 +376,8 @@
             modalCobroAbierto: false,
             metodoPago: 'efectivo',
             propinaSugerida: true, // 10%
+            modalAnularAbierto: false,
+            motivoAnulacion: '',
             
             categorias: [
                 { id: 'coffee', label: 'Cafés', icon: '☕' },
@@ -458,6 +490,55 @@
                 this.metodoPago = 'efectivo';
                 this.propinaSugerida = true;
                 this.modalCobroAbierto = true;
+            },
+
+            abrirAnularModal() {
+                this.motivoAnulacion = '';
+                this.modalAnularAbierto = true;
+            },
+
+            async confirmarAnulacion() {
+                if (!this.mesaSeleccionada || !this.mesaSeleccionada.pedido_id) return;
+
+                const motivo = this.motivoAnulacion.trim();
+                if (motivo.length < 5) {
+                    alert('Indica un motivo de al menos 5 caracteres.');
+                    return;
+                }
+                if (!confirm('¿Anular este pedido? Se repondrá el stock y la mesa quedará libre.')) {
+                    return;
+                }
+
+                this.loading = true;
+
+                try {
+                    const res = await fetch(`/api/pedidos/${this.mesaSeleccionada.pedido_id}/anular`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                        },
+                        body: JSON.stringify({ motivo })
+                    });
+
+                    const data = await res.json();
+
+                    if (res.ok) {
+                        alert('✅ Pedido anulado. Stock repuesto y mesa liberada.');
+                        this.modalAnularAbierto = false;
+                        this.mesaSeleccionada = null;
+                        this.fetchData();
+                    } else {
+                        console.error(data);
+                        const detalle = data.errors ? Object.values(data.errors).flat().join(' ') : (data.message || '');
+                        alert('❌ No se pudo anular el pedido. ' + detalle);
+                    }
+                } catch (e) {
+                    console.error(e);
+                    alert('❌ Error de conexión con el servidor.');
+                } finally {
+                    this.loading = false;
+                }
             },
 
             async enviarPedido() {

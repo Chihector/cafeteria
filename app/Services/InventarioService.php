@@ -80,6 +80,33 @@ class InventarioService
     }
 
     /**
+     * Devuelve unidades al stock al anular un pedido (evento inverso a registrarVenta).
+     * Debe llamarse dentro de la transacción de anulación.
+     */
+    public function registrarDevolucion(Producto $producto, int $cantidad, Pedido $pedido): ?InventarioMovimiento
+    {
+        if (! $producto->controlar_stock) {
+            return null;
+        }
+
+        $producto = Producto::query()->lockForUpdate()->findOrFail($producto->id);
+        $anterior = (int) $producto->stock;
+        $nuevo = $anterior + $cantidad;
+
+        $producto->update(['stock' => $nuevo]);
+
+        return $producto->movimientos()->create([
+            'user_id' => auth()->id(),
+            'pedido_id' => $pedido->id,
+            'tipo' => 'devolucion',
+            'cantidad' => $cantidad,
+            'stock_anterior' => $anterior,
+            'stock_nuevo' => $nuevo,
+            'motivo' => 'Anulación del pedido #'.$pedido->id,
+        ]);
+    }
+
+    /**
      * Descuenta el stock de una línea de pedido. Debe llamarse dentro de la
      * transacción de creación del pedido, con el producto ya bloqueado.
      */

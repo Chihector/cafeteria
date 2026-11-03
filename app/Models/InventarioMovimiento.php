@@ -14,6 +14,7 @@ class InventarioMovimiento extends Model
         'entrada' => 'Entrada',
         'ajuste' => 'Ajuste',
         'venta' => 'Venta',
+        'devolucion' => 'Devolución',
     ];
 
     protected $table = 'inventario_movimientos';

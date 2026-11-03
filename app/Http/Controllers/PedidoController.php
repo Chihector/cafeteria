@@ -203,6 +203,73 @@ class PedidoController extends Controller
         return response()->json(['message' => 'Estado actualizado', 'estado' => $pedido->estado]);
     }
 
+    /**
+     * Anula un pedido activo (pendiente/preparando/listo/entregado):
+     * repone stock, libera la mesa si no quedan pedidos activos,
+     * registra auditoría y avisa a POS/KDS en tiempo real.
+     */
+    public function anular(Request $request, Pedido $pedido)
+    {
+        $validated = $request->validate([
+            'motivo' => 'required|string|min:5|max:500',
+        ]);
+
+        [$pedido, $mesaEstado, $estadoAnterior] = DB::transaction(function () use ($pedido) {
+            $pedido = Pedido::query()->lockForUpdate()->with('detalles.producto')->findOrFail($pedido->id);
+            if (! in_array($pedido->estado, self::ESTADOS_ACTIVOS, true)) {
+                throw ValidationException::withMessages([
+                    'pedido' => 'Este pedido ya no se puede anular (está pagado o ya fue anulado).',
+                ]);
+            }
+
+            foreach ($pedido->detalles as $detalle) {
+                $this->inventario->registrarDevolucion($detalle->producto, (int) $detalle->cantidad, $pedido);
+            }
+
+            $anterior = $pedido->estado;
+            $pedido->update(['estado' => 'anulado']);
+
+            $mesa = Mesa::query()->lockForUpdate()->findOrFail($pedido->mesa_id);
+            $tieneOtrosPedidosActivos = $mesa->pedidos()
+                ->whereIn('estado', self::ESTADOS_ACTIVOS)
+                ->exists();
+            $mesa->update(['estado' => $tieneOtrosPedidosActivos ? 'ocupada' : 'disponible']);
+
+            return [$pedido, $mesa->estado, $anterior];
+        });
+
+        PedidoActualizado::dispatch($pedido->id, $pedido->mesa_id, $pedido->estado, $mesaEstado);
+
+        Auditoria::registrar(
+            'anular',
+            'pedidos',
+            "Pedido #{$pedido->id} anulado: {$validated['motivo']}",
+            $pedido,
+            [
+                'motivo' => $validated['motivo'],
+                'estado_anterior' => $estadoAnterior,
+                'total' => $pedido->total,
+                'mesa_estado' => $mesaEstado,
+            ],
+        );
+
+        Log::info('Pedido anulado', [
+            'pedido_id' => $pedido->id,
+            'mesa_id' => $pedido->mesa_id,
+            'user_id' => auth()->id(),
+            'motivo' => $validated['motivo'],
+            'total' => $pedido->total,
+            'mesa_estado' => $mesaEstado,
+        ]);
+
+        return response()->json([
+            'message' => 'Pedido anulado y stock repuesto.',
+            'pedido_id' => $pedido->id,
+            'estado' => $pedido->estado,
+            'mesa_estado' => $mesaEstado,
+        ]);
+    }
+
     public function pagar(Request $request, Pedido $pedido)
     {
         $validated = $request->validate([
