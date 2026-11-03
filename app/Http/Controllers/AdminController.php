@@ -8,6 +8,7 @@ use App\Models\Producto;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Log;
 
 class AdminController extends Controller
 {
@@ -84,6 +85,13 @@ class AdminController extends Controller
         $lineas = $this->construirLineasCsv($pedidos, $periodo, $etiqueta);
 
         $nombreArchivo = sprintf('reporte-z-%s-%s.csv', $periodo, str_replace('-', '', $valor));
+
+        Log::info('Reporte Z CSV descargado', [
+            'user_id' => $request->user()?->id,
+            'periodo' => $periodo,
+            'valor' => $valor,
+            'pedidos_pagados' => $pedidos->count(),
+        ]);
 
         return response()->streamDownload(
             function () use ($lineas) {

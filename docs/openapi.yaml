@@ -1,0 +1,613 @@
+openapi: 3.0.3
+info:
+  title: Café Rosé - API Interna
+  description: >
+    API interna de la app Café Rosé (Laravel 12). Autenticación por sesión
+    (cookie laravel_session), no por tokens. Autorización por rol vía middleware `role:`.
+    Para uso del equipo; sin versionado contractual.
+  version: "1.0.0"
+  contact:
+    name: Equipo Café Rosé
+servers:
+  - url: http://localhost:8000
+    description: Desarrollo local (php artisan serve)
+tags:
+  - name: auth
+    description: Autenticación y sesión
+  - name: public
+    description: Rutas públicas
+  - name: admin
+    description: Panel de administración (role:admin)
+  - name: pos
+    description: Punto de venta (role:admin,barista)
+  - name: kds
+    description: Cocina / KDS (role:admin,cocina)
+  - name: all
+    description: Accesible por cualquier rol autenticado
+paths:
+  /login:
+    post:
+      tags: [auth]
+      summary: Iniciar sesión
+      description: Redirige (302) al módulo según rol; en fallo vuelve con error de credenciales.
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                remember:
+                  type: boolean
+      responses:
+        "302":
+          description: Redirección a /admin, /pos o /kds según rol, o vuelta a /login con error
+  /logout:
+    post:
+      tags: [auth]
+      summary: Cerrar sesión
+      security:
+        - sessionCookie: []
+      responses:
+        "302":
+          description: Redirige a /login
+  /carta:
+    get:
+      tags: [public]
+      summary: Carta digital pública (HTML)
+      responses:
+        "200":
+          description: Página mobile-first de la carta
+  /:
+    get:
+      tags: [public]
+      summary: Redirección según rol
+      responses:
+        "302":
+          description: Invitado -> /login; autenticado -> módulo según rol
+  /up:
+    get:
+      tags: [public]
+      summary: Health check
+      responses:
+        "200":
+          description: Aplicación viva
+  /admin:
+    get:
+      tags: [admin]
+      summary: Dashboard administrativo (HTML)
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Resumen en vivo (ventas del día solo pagadas, pedidos, mesas, productos)
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /admin/cierre-turno:
+    get:
+      tags: [admin]
+      summary: Reporte Z (HTML)
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/periodo"
+        - $ref: "#/components/parameters/valor"
+      responses:
+        "200":
+          description: Reporte Z del período (solo pedidos pagados)
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /admin/cierre-turno/csv:
+    get:
+      tags: [admin]
+      summary: Reporte Z (descarga CSV)
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/periodo"
+        - $ref: "#/components/parameters/valor"
+      responses:
+        "200":
+          description: Archivo CSV (UTF-8 BOM, separador ';', decimales con coma)
+          headers:
+            Content-Disposition:
+              description: attachment; filename=reporte-z-{periodo}-{fecha}.csv
+              schema:
+                type: string
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /admin/productos:
+    get:
+      tags: [admin]
+      summary: Listar productos (HTML)
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Tabla de administración
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    post:
+      tags: [admin]
+      summary: Crear producto
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/ProductoInput"
+      responses:
+        "201":
+          description: Producto creado
+        "302":
+          description: Redirección a la tabla (patrón habitual de Laravel)
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /admin/productos/{producto}:
+    put:
+      tags: [admin]
+      summary: Actualizar producto
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/productoId"
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/ProductoInput"
+      responses:
+        "200":
+          description: Producto actualizado
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+    delete:
+      tags: [admin]
+      summary: Eliminar producto
+      description: Bloqueado si el producto tiene pedidos históricos (422/flash de error); use disponible=false.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/productoId"
+      responses:
+        "302":
+          description: Redirección a la tabla
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /pos:
+    get:
+      tags: [pos]
+      summary: Punto de venta (HTML)
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: POS (cuadrícula de productos, mesas y carrito)
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/mesas:
+    get:
+      tags: [pos]
+      summary: Mesas con estado
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Lista de mesas; si están ocupadas incluyen pedido_id, total, barista, tiempo_ocupada
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Mesa"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/productos:
+    get:
+      tags: [pos]
+      summary: Productos disponibles
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: Lista de productos con disponible=true
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Producto"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/pedidos:
+    post:
+      tags: [pos]
+      summary: Crear pedido
+      description: >
+        Transaccional: bloquea la mesa, valida contra catálogo (ignora precios del cliente),
+        inserta líneas en lote y marca la mesa ocupada. Emite pedido.creado (broadcast).
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [mesa_id, productos]
+              properties:
+                mesa_id:
+                  type: integer
+                observaciones:
+                  type: string
+                  nullable: true
+                productos:
+                  type: array
+                  minItems: 1
+                  items:
+                    $ref: "#/components/schemas/ItemPedidoInput"
+      responses:
+        "201":
+          description: Pedido creado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PedidoCreadoResponse"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          description: Mesa ocupada / producto no disponible / validación
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationErrorBody"
+  /api/pedidos/{pedido}/pagar:
+    post:
+      tags: [pos]
+      summary: Cobrar pedido y liberar mesa
+      description: Solo pedidos activos; un solo cobro. Emite pedido.actualizado.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/pedidoId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [metodo_pago]
+              properties:
+                metodo_pago:
+                  type: string
+                  enum: [efectivo, tarjeta, transferencia]
+                propina:
+                  type: number
+                  minimum: 0
+      responses:
+        "200":
+          description: Pedido cobrado y mesa liberada (o sigue ocupada si hay otros pedidos activos)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  pedido:
+                    $ref: "#/components/schemas/Pedido"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+  /api/pedidos/{pedido}/ticket:
+    get:
+      tags: [pos]
+      summary: Ticket de cobro (HTML)
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/pedidoId"
+      responses:
+        "200":
+          description: Comprobante para imprimir
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: Pedido no encontrado
+  /api/pedidos/{pedido}/comanda:
+    get:
+      tags: [all]
+      summary: Comanda de cocina 72mm (HTML)
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/pedidoId"
+      responses:
+        "200":
+          description: Comanda térmica para imprimir
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: Pedido no encontrado
+  /kds:
+    get:
+      tags: [kds]
+      summary: Tablero cocina (HTML)
+      security:
+        - sessionCookie: []
+      responses:
+        "200":
+          description: KDS (pendientes / en preparación / listos)
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/kds/pedidos:
+    get:
+      tags: [kds]
+      summary: Listado paginado de comandas
+      security:
+        - sessionCookie: []
+      parameters:
+        - name: estado
+          in: query
+          schema:
+            type: string
+            enum: [pendiente, preparando, listo, entregado]
+          description: Sin valor, devuelve solo pedidos activos
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: Paginación Laravel (data, current_page, per_page, total, ...)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PaginatedPedidos"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/kds/pedidos/{pedido}/estado:
+    patch:
+      tags: [kds]
+      summary: Cambiar estado de comanda
+      description: No acepta 'pagado'. Pedidos pagados rechazan cambios (422). Emite pedido.actualizado.
+      security:
+        - sessionCookie: []
+      parameters:
+        - $ref: "#/components/parameters/pedidoId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [estado]
+              properties:
+                estado:
+                  type: string
+                  enum: [pendiente, preparando, listo, entregado]
+      responses:
+        "200":
+          description: Estado actualizado
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  estado:
+                    type: string
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: laravel_session
+      description: Cookie de sesión emitida por POST /login
+  parameters:
+    periodo:
+      name: periodo
+      in: query
+      schema:
+        type: string
+        enum: [dia, mes, anio]
+        default: dia
+    valor:
+      name: valor
+      in: query
+      description: YYYY-MM-DD (dia) | YYYY-MM normalizado (mes) | YYYY (anio); default hoy
+      schema:
+        type: string
+    pedidoId:
+      name: pedido
+      in: path
+      required: true
+      schema:
+        type: integer
+    productoId:
+      name: producto
+      in: path
+      required: true
+      schema:
+        type: integer
+  responses:
+    Forbidden:
+      description: Autenticado pero sin el rol requerido (403)
+    ValidationError:
+      description: Validación fallida (422)
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ValidationErrorBody"
+  schemas:
+    Mesa:
+      type: object
+      properties:
+        id:
+          type: integer
+        numero:
+          type: string
+        capacidad:
+          type: integer
+        estado:
+          type: string
+          enum: [disponible, ocupada, reservada]
+        pedido_id:
+          type: integer
+          nullable: true
+        total:
+          type: number
+          nullable: true
+        barista:
+          type: string
+          nullable: true
+        tiempo_ocupada:
+          type: string
+          nullable: true
+    Producto:
+      type: object
+      properties:
+        id:
+          type: integer
+        nombre:
+          type: string
+        precio:
+          type: number
+        categoria:
+          type: string
+          enum: [coffee, pastries, sandwiches, cold_drinks]
+        disponible:
+          type: boolean
+        vegetariano:
+          type: boolean
+        destacado:
+          type: boolean
+        alergenos:
+          type: array
+          items:
+            type: string
+        imagen:
+          type: string
+          nullable: true
+    ProductoInput:
+      type: object
+      required: [nombre, precio, categoria]
+      properties:
+        nombre:
+          type: string
+        descripcion:
+          type: string
+        precio:
+          type: number
+        categoria:
+          type: string
+          enum: [coffee, pastries, sandwiches, cold_drinks]
+        imagen:
+          type: string
+          format: binary
+        disponible:
+          type: boolean
+        vegetariano:
+          type: boolean
+        destacado:
+          type: boolean
+        alergenos[]:
+          type: array
+          items:
+            type: string
+    ItemPedidoInput:
+      type: object
+      required: [producto_id, cantidad]
+      properties:
+        producto_id:
+          type: integer
+        cantidad:
+          type: integer
+          minimum: 1
+        notas_especiales:
+          type: string
+          nullable: true
+    Pedido:
+      type: object
+      properties:
+        id:
+          type: integer
+        mesa_id:
+          type: integer
+        user_id:
+          type: integer
+          nullable: true
+        estado:
+          type: string
+          enum: [pendiente, preparando, listo, entregado, pagado]
+        total:
+          type: number
+        observaciones:
+          type: string
+          nullable: true
+        metodo_pago:
+          type: string
+          nullable: true
+          enum: [efectivo, tarjeta, transferencia]
+        propina:
+          type: number
+        created_at:
+          type: string
+          format: date-time
+    PedidoCreadoResponse:
+      type: object
+      properties:
+        message:
+          type: string
+        pedido:
+          $ref: "#/components/schemas/Pedido"
+    PaginatedPedidos:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Pedido"
+        current_page:
+          type: integer
+        per_page:
+          type: integer
+        total:
+          type: integer
+        last_page:
+          type: integer
+    ValidationErrorBody:
+      type: object
+      properties:
+        message:
+          type: string
+        errors:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: string

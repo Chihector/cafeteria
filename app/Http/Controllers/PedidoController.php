@@ -12,6 +12,7 @@ use App\Services\InventarioService;
 use App\Services\Printing\PrinterService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 
 class PedidoController extends Controller
@@ -89,15 +90,22 @@ class PedidoController extends Controller
                 'observaciones' => $validated['observaciones'] ?? null,
             ]);
 
+            // Inserción en lote para evitar un INSERT por línea de pedido.
+            $ahora = now();
+            $lineas = [];
             foreach ($validated['productos'] as $item) {
                 $producto = $productos->get((int) $item['producto_id']);
-                $pedido->detalles()->create([
+                $lineas[] = [
+                    'pedido_id' => $pedido->id,
                     'producto_id' => $producto->id,
                     'cantidad' => $item['cantidad'],
                     'precio_unitario' => $producto->precio,
                     'notas_especiales' => $item['notas_especiales'] ?? null,
-                ]);
+                    'created_at' => $ahora,
+                    'updated_at' => $ahora,
+                ];
             }
+            $pedido->detalles()->insert($lineas);
 
             foreach ($cantidades as $productoId => $cantidad) {
                 $this->inventario->registrarVenta($productos->get($productoId), $cantidad, $pedido);
@@ -109,6 +117,8 @@ class PedidoController extends Controller
         });
 
         // Aviso en tiempo real a cocina y al resto de los POS.
+        // Precarga mesa para que el broadcast no dispare una consulta extra.
+        $pedido->load('mesa');
         PedidoCreado::dispatch($pedido);
 
         $pedido->load('detalles.producto', 'mesa', 'garzon');
@@ -124,6 +134,13 @@ class PedidoController extends Controller
         // Impresión física directa (si está configurada); si falla, el POS
         // recibe fallback=true y abre la comanda en el navegador.
         $impresion = $this->impresora->comandaAutomatica($pedido);
+
+        Log::info('Pedido creado', [
+            'pedido_id' => $pedido->id,
+            'mesa_id' => $pedido->mesa_id,
+            'user_id' => $pedido->user_id,
+            'total' => $pedido->total,
+        ]);
 
         return response()->json([
             'message' => 'Pedido creado exitosamente',
@@ -230,6 +247,16 @@ class PedidoController extends Controller
                 'metodo_pago' => $pedido->metodo_pago,
             ],
         );
+
+        Log::info('Pedido cobrado', [
+            'pedido_id' => $pedido->id,
+            'mesa_id' => $pedido->mesa_id,
+            'user_id' => auth()->id(),
+            'metodo_pago' => $pedido->metodo_pago,
+            'total' => $pedido->total,
+            'propina' => $pedido->propina,
+            'mesa_estado' => $mesaEstado,
+        ]);
 
         $pedido->load('detalles.producto', 'mesa', 'garzon');
         $impresion = $this->impresora->ticketAutomatico($pedido);

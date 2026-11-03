@@ -244,6 +244,42 @@ El cliente usa el mismo host desde el que se abrió la página cuando `REVERB_HO
 
 ---
 
+## 🚀 Mejoras de rendimiento y operaciones (2 nov 2026)
+
+### 18. Optimización de consultas y rendimiento
+- **N+1 eliminado en la creación de pedidos**: el catálogo se lee una sola vez con `whereIn(...)->lockForUpdate()->get()->keyBy('id')` en lugar de una consulta por línea de carrito.
+- **Inserción en lote de líneas**: las `detalles` del pedido se insertan con un único `INSERT` en vez de un `INSERT` por producto.
+- **Broadcast sin carga diferida**: `mesa` se precarga antes de emitir `PedidoCreado` (evita una consulta extra en el canal de tiempo real).
+- **Índices nuevos en `pedidos`**: `pedidos.estado` y `pedidos.created_at` (migración `2026_11_02_000000_add_indexes_to_pedidos_table.php`), usados por el KDS, el dashboard y el Reporte Z.
+- **Estilo de código**: correcciones aplicadas con `vendor/bin/pint`:
+  - `blank_line_after_opening_tag` en modelos (Pedido, Mesa, DetallePedido)
+  - `method_chaining_indentation`, `no_unused_imports`, `no_whitespace_in_blank_line`, `blank_line_before_statement` en controladores (CartaController, PosController)
+  - `class_definition`, `braces_position`, `blank_line_after_opening_tag` en migraciones
+
+### 19. Backup automático de base de datos y archivos
+- **Comando:** `php artisan backup:run`
+- **Qué respalda:**
+  - La base de datos SQLite usando **`VACUUM INTO`** (copia en caliente, transaccionalmente consistente, segura aunque el servidor esté activo).
+  - La carpeta `storage/app/public` (imágenes de productos).
+  - Una copia del `.env` (`env.backup`) para poder restaurar la configuración junto con los datos.
+- **Rotación automática:** conserva los últimos **7 backups** (configurable con `BACKUPS_TO_KEEP=` en `.env`).
+- **Programación:** el backup corre **diariamente a las 03:30** vía el scheduler (`withSchedule` en `bootstrap/app.php`, `withoutOverlapping()`), con `php artisan schedule:run` en un cron o `Schedule::command('backup:run')`.
+- **Ubicación:** `storage/backups/YYYY-MM-DD_HHmm/` (ignorada por git; solo se versiona `storage/backups/.gitignore`).
+- **Prueba manual:** ejecutado y verificado; el SQLite generado es válido (4 pedidos en el último respaldo de prueba).
+
+### 20. Monitoreo y rotación de logs
+- **Logs diarios:** `LOG_CHANNEL=daily` (rotación con 14 días de retención, `LOG_DAILY_DAYS=14`).
+- **Contexto de errores enriquecido:** `bootstrap/app.php` añade `user_id`, `role`, `method`, `path` e `ip` al contexto de cualquier excepción reportada (sin reemplazar el logging por defecto de Laravel).
+- **Eventos críticos registrados** (`storage/logs/laravel-YYYY-MM-DD.log`):
+  - Pedido creado (`Log::info`), pedido cobrado (`Log::info`), descarga del Reporte Z CSV.
+- **`.env.example` actualizado** con `LOG_CHANNEL=daily` y `BACKUPS_TO_KEEP=7`.
+
+### 21. Documentación de la API
+- **`docs/API.md`**: documentación humana completa (autenticación por sesión, roles, todos los endpoints con ejemplos de request/response).
+- **`docs/openapi.yaml`**: especificación OpenAPI 3.0 válida (verificada con linter YAML) para importar en Swagger UI / Postman / Insomnia.
+
+---
+
 ## 🧹 Correcciones de calidad (19 oct 2026)
 
 - El dashboard ahora cuenta como **ventas solo pedidos `pagado`**, igual que el Reporte Z (antes sumaba `listo`/`entregado` sin cobrar).
@@ -298,9 +334,7 @@ El cliente usa el mismo host desde el que se abrió la página cuando `REVERB_HO
 
 ## 🗺️ Estado actual y próximos pasos
 
-Las fases funcionales **1 a 15** están implementadas: pedidos/cobros con integridad, roles, tiempo real, impresión térmica de red, inventario con stock y auditoría de acciones. También hay **CI** (pruebas + Pint + build) y una guía de despliegue a producción con MySQL, Nginx, HTTPS, Reverb supervisado y backups.
-
-La suite local pasa con **45 pruebas y 247 aserciones** (más una verificación E2E previa con Reverb real). El proyecto sigue en desarrollo: esto no equivale a una auditoría de seguridad externa ni a una certificación para producción; antes de abrir al público hay que completar el checklist de [`deploy/README.md`](deploy/README.md).
+Las fases funcionales **1 a 15** están implementadas: pedidos/cobros con integridad, roles, tiempo real, impresión térmica de red, inventario con stock y auditoría de acciones. También hay **CI** (pruebas + Pint + build), una guía de despliegue a producción con MySQL, Nginx, HTTPS, Reverb supervisado y backups, y las **mejoras operativas del 2 nov 2026**: optimización de consultas (fix N+1, inserts en lote, índices `pedidos.estado`/`created_at`), **backup automático diario** (03:30, rotación ×7), logs diarios con contexto de error y **documentación completa de la API** (`docs/API.md`, `docs/openapi.yaml`). La suite local pasa con **45 pruebas y 247 aserciones** (más una verificación E2E previa con Reverb real). El proyecto sigue en desarrollo: esto no equivale a una auditoría de seguridad externa ni a una certificación para producción; antes de abrir al público hay que completar el checklist de [`deploy/README.md`](deploy/README.md).
 
 ### Próximos pasos sugeridos
 
@@ -330,8 +364,11 @@ Orden inmediato:
 - El alias `role` se registra en `bootstrap/app.php`; el middleware está en `app/Http/Middleware/EnsureUserHasRole.php`.
 - Tiempo real (Fase 12): eventos en `app/Events/`, canales en `routes/channels.php` y cliente en `resources/views/layouts/realtime.blade.php`. Se usa `ShouldBroadcastNow`, así que **no hace falta un worker de colas**; sí hace falta Reverb corriendo. `laravel-echo` y `pusher-js` se cargan por CDN.
 - Despliegue: `deploy/README.md` (MySQL, Nginx, HTTPS, systemd, backups). El health check de Laravel está en `/up`.
+- Backup automático: `php artisan backup:run` respalda SQLite (`VACUUM INTO`), `storage/app/public` y `.env` en `storage/backups/`; rota a los últimos 7 backups (`BACKUPS_TO_KEEP`) y corre diariamente a las **03:30** (scheduler en `bootstrap/app.php`).
+- Logs de aplicación rotan **diariamente** (`LOG_CHANNEL=daily`, 14 días, `LOG_DAILY_DAYS`). Excepciones incluyen contexto de negocio (`user_id`, `role`, `path`) vía `withExceptions` en `bootstrap/app.php`.
+- Documentación de la API: **`docs/API.md`** (guía completa) y **`docs/openapi.yaml`** (OpenAPI 3.0 para Swagger UI/Postman).
 - Ejecutar `php artisan test` para toda la suite; `vendor/bin/pint --test` para formato; `npm run build` para assets. El CI hace las tres cosas en `.github/workflows/ci.yml`.
 
 ---
 
-Última actualización: **24 de octubre de 2026**. Fases 13 (impresión térmica), 14 (inventario) y 15 (auditoría) completadas; CI y guía de producción agregadas. Hoja de ruta en [`ROADMAP.md`](ROADMAP.md). Suite: **45 pruebas / 247 aserciones**.
+Última actualización: **2 de noviembre de 2026**. Fases 13 (impresión térmica), 14 (inventario) y 15 (auditoría) completadas; CI y guía de producción. Se añaden mejoras operativas y de rendimiento (fix N+1, inserts en lote, índices, backup automático, logs diarios, API documentada). Hoja de ruta en [`ROADMAP.md`](ROADMAP.md). Suite: **45 pruebas / 247 aserciones**.
