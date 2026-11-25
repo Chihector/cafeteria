@@ -326,6 +326,24 @@ El cliente usa el mismo host desde el que se abrió la página cuando `REVERB_HO
 
 ---
 
+## ✅ Verificación de calidad (25 nov 2026)
+
+Se corrió una pasada de pruebas y validaciones sobre el proyecto local; todas en verde:
+
+| Prueba / Validación | Comando | Resultado |
+|---|---|---|
+| Suite de pruebas (Unit + Feature) | `php artisan test` | **65 pruebas / 324 aserciones**, 0 fallos (SQLite `:memory:`) |
+| Validación de Composer | `composer validate` | válido |
+| Sintaxis PHP | `php -l` sobre `app/`, `database/`, `routes/` | sin errores de sintaxis |
+| Carga de rutas | `php artisan route:list` | **43 rutas** cargadas correctamente |
+| Estilo de código | `vendor/bin/pint --test` | aprobado |
+| Compilación del frontend | `npm run build` | build de Vite completado (58 módulos, assets en `public/build/`) |
+| Estado de migraciones | `php artisan migrate:status` | todas las migraciones aplicadas |
+
+El proyecto está listo para usar: `npm run dev --host` + `php artisan serve --host=0.0.0.0 --port=8000`, o sigue la guía de producción en [`deploy/README.md`](deploy/README.md).
+
+---
+
 ## 📂 Estructura de Rutas Principales
 
 | Ruta | Método | Descripción | Acceso |
@@ -402,4 +420,4 @@ Orden inmediato:
 
 ---
 
-Última actualización: **3 de noviembre de 2026**. Fases 16 (anulación con devolución de stock) y 17 (gestión de usuarios desde el panel + login con rate limiting y auditoría de fallos) completadas; ROADMAP actualizado con P1 y P2 resueltas. Suite: **65 pruebas / 324 aserciones**. Próxima prioridad: **impresión por áreas** (`ROADMAP.md`).
+Última actualización: **25 de noviembre de 2026**. Fases 16 (anulación con devolución de stock) y 17 (gestión de usuarios desde el panel + login con rate limiting y auditoría de fallos) completadas; ROADMAP actualizado con P1 y P2 resueltas. Suite verificada: **65 pruebas / 324 aserciones** (`Verificación de calidad` arriba). Próxima prioridad: **impresión por áreas** (`ROADMAP.md`).

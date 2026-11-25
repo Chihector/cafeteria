@@ -60,7 +60,19 @@ FLUSH PRIVILEGES;
 EXIT;
 ```
 
-## 3. Instalar la aplicación
+## 3. Verificación de calidad antes del despliegue (25 nov 2026)
+
+Antes de desplegar, verificar en el servidor de desarrollo o localmente que todo esté verde:
+
+```bash
+php artisan test          # suite: 65 pruebas / 324 aserciones, 0 fallos
+vendor/bin/pint --test    # estilo aprobado
+npm run build             # compilación de assets
+php artisan route:list    # carga de rutas sin errores
+composer validate         # composer.json válido
+```
+
+## 4. Instalar la aplicación
 
 ```bash
 sudo mkdir -p /var/www/cafeteria
@@ -125,7 +137,7 @@ sudo chown -R www-data:www-data /var/www/cafeteria/storage /var/www/cafeteria/bo
 sudo chmod -R 775 /var/www/cafeteria/storage /var/www/cafeteria/bootstrap/cache
 ```
 
-## 4. Nginx + HTTPS
+## 5. Nginx + HTTPS
 
 Edita `deploy/nginx.conf` y reemplaza los dominios y la versión de PHP-FPM. Luego:
 
@@ -149,7 +161,7 @@ DNS necesario:
 
 Verifica que `https://cafeteria.example.com/up` responda `200 OK`.
 
-## 5. Reverb y colas con systemd
+## 6. Reverb y colas con systemd
 
 ```bash
 sudo cp deploy/cafeteria-reverb.service /etc/systemd/system/
@@ -168,7 +180,7 @@ El POS debe mostrar **● Tiempo real**. Si muestra **○ Auto-refresco**, revis
 3. El proxy `wss` de Nginx y el certificado de `ws.tudominio.com`.
 4. `php artisan optimize:clear` si cambiaste variables y la configuración está cacheada.
 
-## 6. Scheduler de Laravel
+## 7. Scheduler de Laravel
 
 ```bash
 sudo crontab -u www-data -e
@@ -178,7 +190,7 @@ sudo crontab -u www-data -e
 * * * * * cd /var/www/cafeteria && /usr/bin/php artisan schedule:run >> /dev/null 2>&1
 ```
 
-## 7. Backups automáticos
+## 8. Backups automáticos
 
 > **Nota — desarrollo local (SQLite):** para el entorno de desarrollo existe `php artisan backup:run`,
 > que respalda `database.sqlite` (copia en caliente vía `VACUUM INTO`), `storage/app/public` y `.env`
@@ -221,7 +233,7 @@ sudo chown -R www-data:www-data /var/www/cafeteria/storage/app/public
 
 Prueba una restauración completa al menos una vez al trimestre.
 
-## 8. Actualizar una instalación existente
+## 9. Actualizar una instalación existente
 
 Antes de actualizar, espera a que el **CI** del commit esté en verde. Si el workflow falla, no despliegues esa versión.
 
@@ -240,7 +252,7 @@ sudo systemctl restart cafeteria-reverb cafeteria-queue
 sudo -u www-data php artisan up
 ```
 
-## 9. Checklist de seguridad antes de abrir al público
+## 10. Checklist de seguridad antes de abrir al público
 
 - [ ] `APP_ENV=production`, `APP_DEBUG=false`.
 - [ ] `APP_KEY`, `DB_PASSWORD`, `REVERB_APP_SECRET` únicos y fuera de Git.
@@ -252,7 +264,7 @@ sudo -u www-data php artisan up
 - [ ] Monitorización del endpoint `/up`.
 - [ ] Impresora de red aislada de Internet; solo accesible desde la LAN del local.
 
-## 10. Verificación posterior al despliegue
+## 11. Verificación posterior al despliegue
 
 1. Login con el administrador real.
 2. Crear un producto, una mesa y un pedido de prueba.

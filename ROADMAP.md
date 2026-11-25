@@ -1,9 +1,25 @@
 # Hoja de ruta - Café Rosé
 
-> Última actualización: **3 de noviembre de 2026**.
-> Estado de partida: fases 1 a 15 completas + **Prioridad 1 (anulación)** y **Prioridad 2 (gestión de usuarios)** + quick win de login (rate limiting y auditoría de intentos fallidos); suite en **65 pruebas / 324 aserciones**, CI configurado y guía de producción lista.
+> Última actualización: **25 de noviembre de 2026**.
+> Estado de partida: fases 1 a 15 completas + **Prioridad 1 (anulación)** y **Prioridad 2 (gestión de usuarios)** + quick win de login (rate limiting y auditoría de intentos fallidos); suite verificada en **65 pruebas / 324 aserciones**, CI configurado y guía de producción lista.
 
 Esta hoja de ruta prioriza el trabajo de la **próxima sesión** y deja un backlog ordenado para las siguientes. La idea es cerrar primero lo que más impacta en la operación diaria del local, sin abrir frentes nuevos antes de estabilizar lo que ya existe.
+
+---
+
+## 0. Validación del estado actual (25 nov 2026)
+
+Antes de tomar decisiones, se corrió una pasada de verificación sobre el proyecto ya existente; todo en verde:
+
+- `php artisan test` → **65 pruebas / 324 aserciones**, 0 fallos.
+- `composer validate` → válido.
+- `php -l` sobre `app/`, `database/` y `routes/` → sin errores de sintaxis.
+- `php artisan route:list` → **43 rutas** cargadas correctamente.
+- `vendor/bin/pint --test` → aprobado.
+- `npm run build` → build de Vite completado.
+- `php artisan migrate:status` → todas las migraciones aplicadas.
+
+No hubo errores nuevos por corregir; el proyecto está listo para usarse o para que lo revise una empresa como proyecto en curso.
 
 ---
 

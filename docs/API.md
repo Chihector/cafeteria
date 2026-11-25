@@ -296,3 +296,11 @@ Si el WebSocket no está disponible, ambas vistas hacen **auto-refresco cada 12 
    `X-CSRF-TOKEN`/`_token`; las rutas AJAX del POS ya lo envían.
 3. **Comportamiento no contractual**: las rutas `/api/*` pueden cambiar sin versionado;
    documentado es para uso interno del equipo.
+
+---
+
+## Verificación de pruebas (25 nov 2026)
+
+Suite verificada localmente: `php artisan test` → **65 pruebas / 324 aserciones**, 0 fallos.
+Para mantenerla verde tras cambios, se pueden ejecutar: `composer validate`, `php -l` sobre `app/`,
+`php artisan route:list`, `vendor/bin/pint --test` y `npm run build`.
